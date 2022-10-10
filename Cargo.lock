@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "git-torrent-rust"
+name = "gtr"
 version = "0.1.0"
