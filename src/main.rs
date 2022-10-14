@@ -30,13 +30,12 @@ fn main() {
     args.remove(0); // first argument is a command name
     let dir = args.remove(0);
 
+    // XXX can be combined in a single `setup` call;
     is_git(dir);
     ignore_gtr(dir);
 
     let refs = ls_remote(dir);
-    for r in refs {
-        println!("LSREMOTE: ref: {} sha: {}", r.referrence, r.hash);
-    }
+    println!("{refs:?}");
 
     // XXX pass refs to make sure that corresponding branches exist???
     match args.remove(0) {
@@ -45,5 +44,4 @@ fn main() {
         "list" => list(dir),
         _ => panic!("Unrecognized command")
     }
-
 }

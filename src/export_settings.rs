@@ -11,7 +11,7 @@ static SETTINGS_FILE: &str = "gittorrentd-daemon-export";
 /// Add branches to be shared via gittorrent
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches to be added.
-/// It adds branches resolving duplication, stores them in gitignored .gtr directory of the repository.
+/// It adds branches resolving duplication, stores them .gtr/gittorrent-daemon-export.
 pub fn add(dir: &str, new_branches: &Vec<&str>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&str> = old_branches.iter().map(|s| s.as_ref()).collect();
@@ -23,7 +23,7 @@ pub fn add(dir: &str, new_branches: &Vec<&str>) {
 /// Removes branches to be shared via gittorrent
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches not to be shared.
-/// It removes branches resolving duplication, stores new settingsthem in gitignored .gtr directory of the repository.
+/// It removes branches resolving duplication, stores new settings in .gtr/gittorrent-daemon-export.
 pub fn remove(dir: &str, new_branches: &Vec<&str>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&str> = old_branches.iter().map(|s| s.as_ref()).collect();
@@ -34,7 +34,7 @@ pub fn remove(dir: &str, new_branches: &Vec<&str>) {
 
 /// Lists branches currently shared via gittorrent
 ///
-/// The parameter is the git repo directory. It reads branches stored in gitignored .gtr directory of the repository.
+/// The parameter is the git repo directory. It reads branches stored in .gtr/gittorrentd-daemon-export
 pub fn list(dir: &str) {
     let settings = read_old_branches(dir);
     println!("list: {settings:?}");
