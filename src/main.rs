@@ -33,8 +33,10 @@ fn main() {
         }
     }
 
-    // TODO: read branches from file (better:  make "action" return them)
+    // TODO:
+    // read branches from file
     // get their hash from git
-    //
+    // follow original gittorrent
+
     // TODO: write integration test
 }
