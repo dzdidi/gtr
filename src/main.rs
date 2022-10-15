@@ -11,6 +11,9 @@ use gtr::export_settings::{add, remove, list};
 // My approach so far is to share repo by running gittorrentd in it and providing branches
 // to share as arguments, with master (and HEAD?) being defaults. The list of provided
 // branches will be stored in `.gtr/gittorrentd-daemon-export` file
+//
+// XXX consider split for CLI and Daemon 
+// NOTE: basic CLI functionality might be completed in current implementation
 fn main() {
     // TODO:
     // start DHT, sync
@@ -28,7 +31,7 @@ fn main() {
         match action {
             "add" => add(dir, &select_exsiting_branches(dir, &args).iter().collect()),
             "remove" => remove(dir, &args),
-            "list" => list(dir),
+            "list" => list(dir), // and exit?
             _ => panic!("Unrecognized command")
         }
     }
