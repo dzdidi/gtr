@@ -20,23 +20,21 @@ fn main() {
     let mut args: Vec<&String> = args.iter().collect();
 
     args.remove(0); // first argument is a command name
-    let dir = args.remove(0);
-    let action = args.remove(0).as_str();
-
+    let dir = args.remove(0); // second is a target directory
     setup(dir);
 
-    let existing_branches = select_exsiting_branches(dir, &args);
-    let existing_branches: Vec<&String> = existing_branches.iter().collect();
-
-    match action {
-        "add" => add(dir, &existing_branches),
-        "remove" => remove(dir, &args),
-        "list" => list(dir),
-        _ => panic!("Unrecognized command")
+    if args.len() > 0 {
+        let action = args.remove(0).as_str(); // third is action
+        match action {
+            "add" => add(dir, &select_exsiting_branches(dir, &args).iter().collect()),
+            "remove" => remove(dir, &args),
+            "list" => list(dir),
+            _ => panic!("Unrecognized command")
+        }
     }
 
-    // TODO: read branches
-    // select the current branches from file
+    // TODO: read branches from file (better:  make "action" return them)
     // get their hash from git
     //
+    // TODO: write integration test
 }

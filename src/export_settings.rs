@@ -89,7 +89,6 @@ mod tests {
         let input_branches: Vec<&String> = branches.iter().collect();
         add(dir, &input_branches);
         let res = read_old_branches(dir);
-        println!("{res:?} != {branches:?}");
         assert!(res.eq(&branches));
 
         let input_branches: Vec<&String> = more_branches.iter().collect();
