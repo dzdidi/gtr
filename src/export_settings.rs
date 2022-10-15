@@ -1,5 +1,4 @@
 use std::io::{Read, ErrorKind, Write};
-use std::ops::Deref;
 use std::path::Path;
 use std::fs::File;
 use std::collections::HashSet;
@@ -12,24 +11,24 @@ static SETTINGS_FILE: &str = "gittorrentd-daemon-export";
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches to be added.
 /// It adds branches resolving duplication, stores them .gtr/gittorrent-daemon-export.
-pub fn add(dir: &str, new_branches: &Vec<&str>) {
+pub fn add(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
-    let old_branches: HashSet<&str> = old_branches.iter().map(|s| s.as_ref()).collect();
-    let new_branches: HashSet<&str> = new_branches.iter().map(|s| s.deref()).collect();
-    let final_branches: Vec<&str> = old_branches.union(&new_branches).into_iter().map(|b| b.deref()).collect();
-    write_new_branches(dir, final_branches);
+    let old_branches: HashSet<&String> = old_branches.iter().collect();
+    let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
+    let final_branches: Vec<&String> = old_branches.union(&new_branches).into_iter().map(|b| *b).collect();
+    write_new_branches(dir, &final_branches);
 }
 
 /// Removes branches to be shared via gittorrent
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches not to be shared.
 /// It removes branches resolving duplication, stores new settings in .gtr/gittorrent-daemon-export.
-pub fn remove(dir: &str, new_branches: &Vec<&str>) {
+pub fn remove(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
-    let old_branches: HashSet<&str> = old_branches.iter().map(|s| s.as_ref()).collect();
-    let new_branches: HashSet<&str> = new_branches.iter().map(|s| s.deref()).collect();
-    let final_branches: Vec<&str> = old_branches.difference(&new_branches).into_iter().map(|b| b.deref()).collect();
-    write_new_branches(dir, final_branches);
+    let old_branches: HashSet<&String> = old_branches.iter().collect();
+    let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
+    let final_branches: Vec<&String> = old_branches.difference(&new_branches).into_iter().map(|b| *b).collect();
+    write_new_branches(dir, &final_branches);
 }
 
 /// Lists branches currently shared via gittorrent
@@ -60,13 +59,14 @@ fn read_old_branches(dir: &str) -> Vec<String> {
     };
 }
 
-fn write_new_branches(dir: &str, branches: Vec<&str>) {
+fn write_new_branches(dir: &str, branches: &Vec<&String>) {
     let mut sorted = branches.to_vec();
     sorted.sort();
+    let stred: Vec<&str> = sorted.iter().map(|b| b.as_str()).collect();
 
     let settings_path = Path::new(dir).join(SETTINGS_DIR).join(SETTINGS_FILE);
     match File::create(&settings_path) {
-        Ok(mut file) => file.write_all(sorted.join("\n").as_bytes()).unwrap(),
+        Ok(mut file) => file.write_all(stred.join("\n").as_bytes()).unwrap(),
         Err(e) => panic!("Cant store settings to file {e}")
     }
 }
@@ -78,21 +78,26 @@ mod tests {
     #[test]
     fn adds_entries_to_settings() {
         let dir = ".";
-        let mut branches = vec!["testA", "testB"];
+        let mut branches: Vec<String> = vec!["testA", "testB"].iter().map(|s| String::from(*s)).collect();
         branches.sort();
-        let mut more_branches = vec!["testC", "testB", "testD"];
+        let mut more_branches: Vec<String> = vec!["testC", "testB", "testD"].iter().map(|s| String::from(*s)).collect();
         more_branches.sort();
 
-        let mut res_branches = vec!["testA", "testB", "testC", "testD"];
+        let mut res_branches: Vec<String> = vec!["testA", "testB", "testC", "testD"].iter().map(|s| String::from(*s)).collect();
         res_branches.sort();
 
-        add(dir, &branches);
-        assert!(read_old_branches(dir).eq(&branches));
+        let input_branches: Vec<&String> = branches.iter().collect();
+        add(dir, &input_branches);
+        let res = read_old_branches(dir);
+        println!("{res:?} != {branches:?}");
+        assert!(res.eq(&branches));
 
-        add(dir, &more_branches);
+        let input_branches: Vec<&String> = more_branches.iter().collect();
+        add(dir, &input_branches);
         assert!(read_old_branches(dir).eq(&res_branches));
 
-        remove(dir, &res_branches);
+        let input_branches: Vec<&String> = res_branches.iter().collect();
+        remove(dir, &input_branches);
         assert!(read_old_branches(dir).join("").eq(""));
     }
 }
