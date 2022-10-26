@@ -35,6 +35,9 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
         .collect();
 }
 
+// TODO: add function for generating git pack. See:
+// https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
+// NOTE: it is implemented in gittorrentd as a call to git-upload-pack
 
 /// Add .gtr directory to gitignore in provided repository
 fn ignore_gtr(dir: &str) {
