@@ -37,7 +37,32 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 
 // TODO: add function for generating git pack. See:
 // https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-// NOTE: it is implemented in gittorrentd as a call to git-upload-pack
+pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
+    let git_dir_path = Path::new(dir).join("./dir");
+    let mut pack_upload = Command::new("git-upload-pack").arg("--strict").arg(git_dir_path).spawn().unwrap();
+
+    let message = create_pack_message(want, have);
+    pack_upload.stdin.as_mut().unwrap().write(message.as_bytes()).unwrap();
+}
+
+// TODO: test me
+/// Creates message to be written to git-upload-pack process stdin
+fn create_pack_message(want: &str, have: Option<&str>) -> String {
+    let mut message: String = "want ".to_owned();
+    message.push_str(want);
+    message.push_str("\n");
+    match have {
+        None => message.push_str("done\n"),
+        Some(have) => {
+            message.push_str("have ");
+            message.push_str(have);
+            message.push_str("\n");
+            message.push_str("done\n");
+        }
+    }
+
+    return message
+}
 
 /// Add .gtr directory to gitignore in provided repository
 fn ignore_gtr(dir: &str) {
