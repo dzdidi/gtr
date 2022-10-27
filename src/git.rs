@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, ErrorKind, Write};
-use std::process::Command;
+use std::io::{Read, ErrorKind, Write, stdin, Stdin};
+use std::process::{Command, Stdio, ChildStdin};
 use std::str;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -37,32 +37,87 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 
 // TODO: add function for generating git pack. See:
 // https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
-    let git_dir_path = Path::new(dir).join("./dir");
-    let mut pack_upload = Command::new("git-upload-pack").arg("--strict").arg(git_dir_path).spawn().unwrap();
+pub fn upload_pack(dir: &str, want: &'static str, have: &'static str) {
+    let git_dir = Path::new(dir).join(".git");
 
-    let message = create_pack_message(want, have);
-    pack_upload.stdin.as_mut().unwrap().write(message.as_bytes()).unwrap();
+    let mut pack_upload = Command::new("git-upload-pack")
+        .arg("--strict")
+        .arg(git_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to initialize git pack upload");
+
+    let mut pack_upload_stdin = pack_upload.stdin
+        .take()
+        .expect("Failed to get pack upload input stream");
+    std::thread::spawn(move || {
+        write_pack_message(want, have, &pack_upload_stdin);
+    });
+
+    let output = pack_upload.wait_with_output().expect("Failed to read from pack upload output stream");
+    let message = String::from_utf8(output.stdout).expect("Failed to parse pack upload output");
+
+    // TODO:
+    // NOTE: gittorrent reads per line so that it can pipe parsed output to stream
+    // for now we just read everything together which might be problematic if output
+    // is too long when there are too many packs
+
+    println!("Finished have want dialog");
+    println!("{}", message);
 }
 
-// TODO: test me
 /// Creates message to be written to git-upload-pack process stdin
-fn create_pack_message(want: &str, have: Option<&str>) -> String {
-    let mut message: String = "want ".to_owned();
-    message.push_str(want);
-    message.push_str("\n");
-    match have {
-        None => message.push_str("done\n"),
-        Some(have) => {
-            message.push_str("have ");
-            message.push_str(have);
-            message.push_str("\n");
-            message.push_str("done\n");
-        }
-    }
-
-    return message
+fn write_pack_message(want: &str, have: &str, mut s: &ChildStdin) {
+    write_pack_line(&format!("want {}", want), s);
+    write_pack_line("", s);
+    write_pack_line(&format!("have {}", have), s);
+    write_pack_line("done", s);
 }
+
+fn write_pack_line(line: &str, mut s: &ChildStdin) {
+    let res = if "".eq(line) {
+        s.write_all(b"0000")
+    } else {
+        s.write_all(format!("{0:04}{1}\n", line.len() + 4 + 1, line).as_bytes())
+    };
+
+    res.expect("Failed to write to pack upload input stream")
+}
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+// 
+//     #[test]
+//     fn writes_empty_pack_line() {
+//         let message = write_pack_line(None);
+//         assert!(message.eq("0000"));
+//     }
+// 
+//     #[test]
+//     fn write_non_empty_pack_line() {
+//         let line = "random_line";
+//         let message = write_pack_line(Some(line));
+//         assert!(message.eq("0016random_line\n"));
+//     }
+// 
+//     #[test]
+//     fn creates_pack_message_without_have() {
+//         let want = "wanted_sha";
+//         let message = create_pack_message(want, None);
+//         assert!(message.eq("want wanted_sha\ndone\n"));
+//     }
+// 
+//     #[test]
+//     fn creates_pack_message_with_have() {
+//         let want = "wanted_sha";
+//         let have = "haved_sha";
+//         let message = create_pack_message(want, Some(have));
+//         assert!(message.eq("want wanted_sha\nhave haved_sha\ndone\n"));
+//     }
+// }
+
+
 
 /// Add .gtr directory to gitignore in provided repository
 fn ignore_gtr(dir: &str) {
