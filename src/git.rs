@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, ErrorKind, Write, stdin, Stdin};
-use std::process::{Command, Stdio, ChildStdin};
+use std::io::{Read, ErrorKind, Write};
+use std::process::{Command, Child, Stdio, ChildStdin, ChildStdout};
 use std::str;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -34,10 +34,9 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
         })
         .collect();
 }
-
 // TODO: add function for generating git pack. See:
 // https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-pub fn upload_pack(dir: &str, want: &'static str, have: &'static str) {
+pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
     let git_dir = Path::new(dir).join(".git");
 
     let mut pack_upload = Command::new("git-upload-pack")
@@ -48,76 +47,65 @@ pub fn upload_pack(dir: &str, want: &'static str, have: &'static str) {
         .spawn()
         .expect("Failed to initialize git pack upload");
 
-    let mut pack_upload_stdin = pack_upload.stdin
-        .take()
-        .expect("Failed to get pack upload input stream");
-    std::thread::spawn(move || {
-        write_pack_message(want, have, &pack_upload_stdin);
+    // NOTE: reference discovery
+    let p = pack_upload.wait_with_output().expect("Failed to get pack upload output");
+    let res = String::from_utf8(p.stdout).unwrap();
+    res.split("\n").into_iter().for_each(|l| {
+        println!("S: {l}")
     });
 
-    let output = pack_upload.wait_with_output().expect("Failed to read from pack upload output stream");
-    let message = String::from_utf8(output.stdout).expect("Failed to parse pack upload output");
 
-    // TODO:
-    // NOTE: gittorrent reads per line so that it can pipe parsed output to stream
-    // for now we just read everything together which might be problematic if output
-    // is too long when there are too many packs
+    // TODO: pack file negotiation
+    let mut i_s = pack_upload.stdin.take().expect("Failed to get pack upload input stream");
+    write_message(want, have, &mut i_s);
 
-    println!("Finished have want dialog");
-    println!("{}", message);
+    // TODO: read from server again for ACK and NACK and for PACKFILE stream
 }
 
-/// Creates message to be written to git-upload-pack process stdin
-fn write_pack_message(want: &str, have: &str, mut s: &ChildStdin) {
-    write_pack_line(&format!("want {}", want), s);
-    write_pack_line("", s);
-    write_pack_line(&format!("have {}", have), s);
-    write_pack_line("done", s);
+fn exchange_have_want(pack_upload: &mut Child, want: &str, have: Option<&str>) {
+    // XXX something to do with ACK and NACK
+
+    // let mut o_s = pack_upload.stdout.take().expect("Failed to get pack upload output stream");
+    // let p = pack_upload.wait_with_output().expect("Failed to get pack upload output");
+    // let res = String::from_utf8(p.stdout).unwrap();
+    // println!("READ RES: {res}");
+    // read_message(&mut o_s);
 }
 
-fn write_pack_line(line: &str, mut s: &ChildStdin) {
+fn read_message(o_s: &mut ChildStdout) {
+    let mut message = String::new();
+    o_s.read_to_string(&mut message).expect("Failed to read message");
+    message.split("\n").into_iter().for_each(|l| {
+        //let size = usize::from_str_radix(&l[0..4], 16).unwrap();
+        let line = &l[4..l.len()];
+        // XXX should we wait for input to actually appear?
+    });
+}
+fn write_message(want: &str, have: Option<&str>, i_s: &mut ChildStdin) {
+    write_pack_line(&format!("want {}", want), i_s);
+    write_pack_line("", i_s);
+    match have {
+        Some(have) => {
+            write_pack_line(&format!("have {}", have), i_s);
+            write_pack_line("", i_s);
+        },
+        None => {}
+    }
+    write_pack_line("done", i_s);
+}
+
+fn write_pack_line(line: &str, s: &mut ChildStdin) {
     let res = if "".eq(line) {
-        s.write_all(b"0000")
+        print!("C: 0000\n");
+        s.write_all(b"0000\n")
     } else {
-        s.write_all(format!("{0:04}{1}\n", line.len() + 4 + 1, line).as_bytes())
+        let message = format!("{0:04}{1}\n", line.len() + 4 + 1, line);
+        print!("C: {message}");
+        s.write_all(message.as_bytes())
     };
 
     res.expect("Failed to write to pack upload input stream")
 }
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-// 
-//     #[test]
-//     fn writes_empty_pack_line() {
-//         let message = write_pack_line(None);
-//         assert!(message.eq("0000"));
-//     }
-// 
-//     #[test]
-//     fn write_non_empty_pack_line() {
-//         let line = "random_line";
-//         let message = write_pack_line(Some(line));
-//         assert!(message.eq("0016random_line\n"));
-//     }
-// 
-//     #[test]
-//     fn creates_pack_message_without_have() {
-//         let want = "wanted_sha";
-//         let message = create_pack_message(want, None);
-//         assert!(message.eq("want wanted_sha\ndone\n"));
-//     }
-// 
-//     #[test]
-//     fn creates_pack_message_with_have() {
-//         let want = "wanted_sha";
-//         let have = "haved_sha";
-//         let message = create_pack_message(want, Some(have));
-//         assert!(message.eq("want wanted_sha\nhave haved_sha\ndone\n"));
-//     }
-// }
-
-
 
 /// Add .gtr directory to gitignore in provided repository
 fn ignore_gtr(dir: &str) {
