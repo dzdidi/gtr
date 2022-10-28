@@ -1,9 +1,14 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, ErrorKind, Write};
-use std::process::{Command, Child, Stdio, ChildStdin, ChildStdout};
+use std::io::{BufReader, Read, ErrorKind, Write, BufRead};
+use std::process::{Command, Child, Stdio};
 use std::str;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use std::thread;
+use std::thread::sleep;
+use std::time::Duration;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 
 static SETTINGS_DIR: &str = ".gtr";
 
@@ -34,77 +39,132 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
         })
         .collect();
 }
-// TODO: add function for generating git pack. See:
-// https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
+
+/// Generates necessary pack files
+// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
 pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
     let git_dir = Path::new(dir).join(".git");
 
+    let (sender1, receiver1) = channel(); // channel to read data from pack server
+    let (sender2, receiver2) = channel(); // channel to send data to pack server
+
+    let mut upload_pack_process = start_upload_pack_process(git_dir.to_str().unwrap(), sender1, receiver2);
+    // NOTE: reference discovery
+    write_message(want, have, &sender2);
+
+    start_upload_pack_command_thread(Mutex::new(sender2.clone()));
+
+    let should_terminate = Arc::new(AtomicBool::new(false));
+
+    while !should_terminate.load(Ordering::Relaxed) {
+        match receiver1.try_recv() {
+            Ok(line) => {
+                // NOTE: reference discovery (cont)
+                read_line(line);
+                // TODO: read from server again for ACK and NACK and for PACKFILE stream
+                // send responses to sender2
+
+                // TODO: pack file negotiation
+            }
+            Err(TryRecvError::Empty) => {
+                sleep(Duration::from_secs(1));
+                continue;
+            }
+            Err(e) => {
+                println!("Error: {:?}", e);
+            }
+        }
+    }
+
+    upload_pack_process.kill().expect("Failed terminate pack upload process");
+}
+
+fn start_upload_pack_process(dir: &str, sender: Sender<String>, receiver: Receiver<String>) -> Child {
     let mut pack_upload = Command::new("git-upload-pack")
         .arg("--strict")
-        .arg(git_dir)
+        .arg(dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to initialize git pack upload");
 
-    // NOTE: reference discovery
-    let p = pack_upload.wait_with_output().expect("Failed to get pack upload output");
-    let res = String::from_utf8(p.stdout).unwrap();
-    res.split("\n").into_iter().for_each(|l| {
-        println!("S: {l}")
+    start_upload_pack_process_thread(&mut pack_upload, sender, receiver);
+
+    pack_upload
+}
+
+fn start_upload_pack_process_thread(pack_upload: &mut Child, sender: Sender<String>, receiver: Receiver<String>) {
+    let mut stdin = pack_upload.stdin.take().expect("Failed to get pack upload input stream");
+    let mut stdout = pack_upload.stdout.take().expect("Failed to get pack upload output");
+
+    thread::spawn(move || {
+        let mut f = BufReader::new(stdout);
+        loop {
+            match receiver.try_recv() {
+                Ok(line) => {
+                    // XXX reads from stdin and writes to stdout
+                    stdin.write_all(line.as_bytes()).expect("Failed to write to pack upload input stream");
+                }
+                Err(TryRecvError::Empty) => {
+                    sleep(Duration::from_secs(1));
+                    continue;
+                }
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                }
+            }
+            let mut buf = String::new();
+            match f.read_line(&mut buf) {
+                Ok(_) => {
+                    sender.send(buf).unwrap();
+                    continue;
+                }
+                Err(e) => {
+                    println!("an error!: {:?}", e);
+                    break;
+                }
+            }
+        }
     });
-
-
-    // TODO: pack file negotiation
-    let mut i_s = pack_upload.stdin.take().expect("Failed to get pack upload input stream");
-    write_message(want, have, &mut i_s);
-
-    // TODO: read from server again for ACK and NACK and for PACKFILE stream
 }
 
-fn exchange_have_want(pack_upload: &mut Child, want: &str, have: Option<&str>) {
-    // XXX something to do with ACK and NACK
-
-    // let mut o_s = pack_upload.stdout.take().expect("Failed to get pack upload output stream");
-    // let p = pack_upload.wait_with_output().expect("Failed to get pack upload output");
-    // let res = String::from_utf8(p.stdout).unwrap();
-    // println!("READ RES: {res}");
-    // read_message(&mut o_s);
-}
-
-fn read_message(o_s: &mut ChildStdout) {
-    let mut message = String::new();
-    o_s.read_to_string(&mut message).expect("Failed to read message");
-    message.split("\n").into_iter().for_each(|l| {
-        //let size = usize::from_str_radix(&l[0..4], 16).unwrap();
-        let line = &l[4..l.len()];
-        // XXX should we wait for input to actually appear?
+fn start_upload_pack_command_thread(mutex: Mutex<Sender<String>>) {
+    thread::spawn(move || {
+        let sender = mutex.lock().unwrap();
+        sleep(Duration::from_secs(3));
+        sender.send(String::from("dont know what to send from command thread")).unwrap();
     });
 }
-fn write_message(want: &str, have: Option<&str>, i_s: &mut ChildStdin) {
-    write_pack_line(&format!("want {}", want), i_s);
-    write_pack_line("", i_s);
+
+fn read_line(line: String) {
+    //let size = usize::from_str_radix(&l[0..4], 16).unwrap();
+    let line = &line[4..line.len()];
+    println!("RECEIVED: {line}");
+    // TODO: implement ack nack processing
+}
+
+fn write_message(want: &str, have: Option<&str>, sender_channel: &Sender<String>) {
+    write_pack_line(&format!("want {}", want), sender_channel);
+    write_pack_line("", sender_channel);
     match have {
         Some(have) => {
-            write_pack_line(&format!("have {}", have), i_s);
-            write_pack_line("", i_s);
+            write_pack_line(&format!("have {}", have), sender_channel);
+            write_pack_line("", sender_channel);
         },
         None => {}
     }
-    write_pack_line("done", i_s);
+    write_pack_line("done", sender_channel);
 }
 
-fn write_pack_line(line: &str, s: &mut ChildStdin) {
-    let res = if "".eq(line) {
-        print!("C: 0000\n");
-        s.write_all(b"0000\n")
+fn write_pack_line(line: &str, sender_channel: &Sender<String>) {
+    if "".eq(line) {
+        println!("SENT: 0000");
+        sender_channel.send(String::from("0000\n")).unwrap()
     } else {
         let message = format!("{0:04}{1}\n", line.len() + 4 + 1, line);
-        print!("C: {message}");
-        s.write_all(message.as_bytes())
+        println!("SENT: {message}");
+        sender_channel.send(message).unwrap();
     };
-
-    res.expect("Failed to write to pack upload input stream")
 }
 
 /// Add .gtr directory to gitignore in provided repository
