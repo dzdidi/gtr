@@ -9,6 +9,7 @@ use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
+use regex::Regex;
 
 static SETTINGS_DIR: &str = ".gtr";
 
@@ -52,7 +53,8 @@ pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
     // NOTE: reference discovery
     write_message(want, have, &sender2);
 
-    start_upload_pack_command_thread(Mutex::new(sender2.clone()));
+    // XXX
+    //start_upload_pack_command_thread(Mutex::new(sender2.clone()));
 
     let should_terminate = Arc::new(AtomicBool::new(false));
 
@@ -60,11 +62,21 @@ pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
         match receiver1.try_recv() {
             Ok(line) => {
                 // NOTE: reference discovery (cont)
-                read_line(line);
-                // TODO: read from server again for ACK and NACK and for PACKFILE stream
-                // send responses to sender2
+                // NOTE: server lists refs, which are already known from the ls-remote command
+                // so we wait for it to signal end.
+                let line = read_line(line);
 
+                // TODO: read from server again for ACK and NACK and for PACKFILE stream
+                let res = match have {
+                    Some(_) => ack_objects_continue(&line),
+                    None => wait_for_nak(&line)
+                };
+
+                if !res {
+                    return
+                }
                 // TODO: pack file negotiation
+                continue;
             }
             Err(TryRecvError::Empty) => {
                 sleep(Duration::from_secs(1));
@@ -77,6 +89,19 @@ pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
     }
 
     upload_pack_process.kill().expect("Failed terminate pack upload process");
+}
+
+fn wait_for_nak(line: &str) -> bool {
+    return !line.eq("NAK")
+}
+
+fn ack_objects_continue(line: &str) -> bool {
+    let ack_regex = Regex::new("^ACK").unwrap();
+    let is_ack = ack_regex.is_match(line);
+    let con_regex = Regex::new("continue$").unwrap();
+    let is_con = con_regex.is_match(line);
+
+    return !is_ack || is_con
 }
 
 fn start_upload_pack_process(dir: &str, sender: Sender<String>, receiver: Receiver<String>) -> Child {
@@ -95,7 +120,7 @@ fn start_upload_pack_process(dir: &str, sender: Sender<String>, receiver: Receiv
 
 fn start_upload_pack_process_thread(pack_upload: &mut Child, sender: Sender<String>, receiver: Receiver<String>) {
     let mut stdin = pack_upload.stdin.take().expect("Failed to get pack upload input stream");
-    let mut stdout = pack_upload.stdout.take().expect("Failed to get pack upload output");
+    let stdout = pack_upload.stdout.take().expect("Failed to get pack upload output");
 
     thread::spawn(move || {
         let mut f = BufReader::new(stdout);
@@ -103,6 +128,7 @@ fn start_upload_pack_process_thread(pack_upload: &mut Child, sender: Sender<Stri
             match receiver.try_recv() {
                 Ok(line) => {
                     // XXX reads from stdin and writes to stdout
+                    println!("writing: {line}");
                     stdin.write_all(line.as_bytes()).expect("Failed to write to pack upload input stream");
                 }
                 Err(TryRecvError::Empty) => {
@@ -131,16 +157,16 @@ fn start_upload_pack_process_thread(pack_upload: &mut Child, sender: Sender<Stri
 fn start_upload_pack_command_thread(mutex: Mutex<Sender<String>>) {
     thread::spawn(move || {
         let sender = mutex.lock().unwrap();
-        sleep(Duration::from_secs(3));
         sender.send(String::from("dont know what to send from command thread")).unwrap();
     });
 }
 
-fn read_line(line: String) {
+fn read_line(line: String) -> String {
     //let size = usize::from_str_radix(&l[0..4], 16).unwrap();
     let line = &line[4..line.len()];
-    println!("RECEIVED: {line}");
+    println!("READING: {line}");
     // TODO: implement ack nack processing
+    return String::from(line)
 }
 
 fn write_message(want: &str, have: Option<&str>, sender_channel: &Sender<String>) {
@@ -158,11 +184,9 @@ fn write_message(want: &str, have: Option<&str>, sender_channel: &Sender<String>
 
 fn write_pack_line(line: &str, sender_channel: &Sender<String>) {
     if "".eq(line) {
-        println!("SENT: 0000");
         sender_channel.send(String::from("0000\n")).unwrap()
     } else {
         let message = format!("{0:04}{1}\n", line.len() + 4 + 1, line);
-        println!("SENT: {message}");
         sender_channel.send(message).unwrap();
     };
 }
