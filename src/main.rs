@@ -1,6 +1,6 @@
 use std::env;
 
-use gtr::git::{setup, select_exsiting_branches, upload_pack};
+use gtr::git::{setup, select_exsiting_branches};
 use gtr::export_settings::{add, remove, list};
 
 // XXX UX:
@@ -8,7 +8,8 @@ use gtr::export_settings::{add, remove, list};
 // All leaves that have `.gtr/gittorrent-daemon-export-ok` file will be shared but only their master and head.
 //
 //
-// FIXME: the approach described bellow is wrong as it will require one web server per repo!
+// TODO: FIXME: the approach described bellow is wrong as it will require one web server per repo!
+//
 // My approach so far is to share repo by running gittorrentd in it and providing branches to share as arguments, with
 // master (and HEAD?) being defaults. The list of provided branches will be stored in `.gtr/gittorrentd-daemon-export`
 // file
@@ -38,12 +39,12 @@ fn main() {
             "add" => add(dir, &select_exsiting_branches(dir, &args).iter().collect()),
             "remove" => remove(dir, &args),
             "list" => list(dir), // and exit?
-            "pack" =>{
-                let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
-                let have = Some("cced046c2b0435ff258de91580720427316f07ae");
-                // upload_pack(dir, want, None)
-                upload_pack(dir, want, have)
-            },
+            // cli test
+            // "pack" =>{
+            //     let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
+            //     let have = Some("cced046c2b0435ff258de91580720427316f07ae");
+            //     upload_pack(dir, want, have)
+            // },
             _ => panic!("Unrecognized command")
         }
     }

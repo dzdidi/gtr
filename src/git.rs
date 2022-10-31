@@ -36,8 +36,8 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
         .collect();
 }
 
-// XXX wait for server to send 0000 and start sending wants
-// for some reason I see no 0000 in servers response
+/// Generates necessary pack files
+// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
 pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
     let pack_upload = start_pack_upload_process(dir);
 
@@ -45,44 +45,11 @@ pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
     let stdout = pack_upload.stdout.unwrap();
     let mut buffer = BufReader::new(stdout);
 
-    let mut expect_nack = false;
-    let mut expect_pack = false;
-    loop {
-        if expect_pack {
-            write_pack_file(dir, want, &mut buffer);
-            break
-        } else {
-            // NOTE: we already know all the refs thus do not need to validate anything
-            // XXX Vec::new() - fails out of bound
-            let mut message_buff = [0; 65535]; // FFFF
-            match buffer.read(&mut message_buff) {
-                Err(e) => println!("Error generating pack file: {:?}", e),
-                Ok(_) => {
-                    let line = String::from_utf8(message_buff.to_vec()).unwrap();
-                    let line = read_line(line);
-                    println!("S: {line}");
-
-                    if expect_nack {
-                        let res = match have {
-                            Some(_) => ack_objects_continue(&line),
-                            None => wait_for_nak(&line)
-                        };
-                        if res {
-                            expect_pack = true;
-                        }
-                    } else {
-                        if line.contains("\n0000") {
-                            write_message(want, have, &mut stdin);
-                            expect_nack = true;
-                        }
-                    };
-                    continue;
-                }
-            };
-        }
-    };
+    request_pack_file(&mut buffer, &mut stdin, want, have);
+    write_pack_file(dir, want, &mut buffer);
 }
 
+/// Store pack file to fs
 fn write_pack_file(dir: &str, want:  &'static str, buffer: &mut BufReader<ChildStdout>) {
     let mut pack_content = Vec::new();
     match buffer.read_to_end(&mut pack_content) {
@@ -95,8 +62,36 @@ fn write_pack_file(dir: &str, want:  &'static str, buffer: &mut BufReader<ChildS
     };
 }
 
-// fn request_pack_file(buffer: &mut BufReader<ChildStdout>, want: &'static str, have: &'static str) { }
+/// Talk to git-upload-pack until it is ready to send pack files
+fn request_pack_file(buffer: &mut BufReader<ChildStdout>, stdin: &mut ChildStdin, want: &'static str, have: Option<&'static str>) {
+    let mut expect_nack = false;
+    loop {
+        // Vec::new() - fails out of bound
+        let mut message_buff = [0; 65535]; // FFFF
+        match buffer.read(&mut message_buff) {
+            Err(e) => println!("Error requesting pack file: {:?}", e),
+            Ok(_) => {
+                let line = read_line(String::from_utf8(message_buff.to_vec()).unwrap());
+                let end_of_list = line.contains("\n0000");
+                // We do not need to check git server refs as we know them from ls
+                if !(expect_nack || end_of_list) { continue; }
 
+                if end_of_list {
+                    write_message(want, have, stdin);
+                    expect_nack = true;
+                    continue;
+                }
+
+                match have {
+                    Some(_) => ack_objects_continue(&line) && return,
+                    None => wait_for_nak(&line) && return,
+                };
+            }
+        };
+    }
+}
+
+/// Start git-upload-pack server
 fn start_pack_upload_process(dir: &str) -> Child {
     let git_dir = Path::new(dir).join(".git");
     let pack_upload = Command::new("git-upload-pack")
@@ -110,13 +105,12 @@ fn start_pack_upload_process(dir: &str) -> Child {
     return pack_upload
 }
 
-/// Generates necessary pack files
-// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-
+/// Identify git pack server nack response
 fn wait_for_nak(line: &str) -> bool {
     return !line.eq("NAK")
 }
 
+/// Identify git pack server ack response
 fn ack_objects_continue(line: &str) -> bool {
     let ack_regex = Regex::new("^ACK").unwrap();
     let is_ack = ack_regex.is_match(line);
@@ -126,13 +120,15 @@ fn ack_objects_continue(line: &str) -> bool {
     return is_ack && !is_con
 }
 
+/// Read git pack server response
 fn read_line(line: String) -> String {
-    // NOTE lines size is actually passed but 
+    // NOTE lines size is actually passed
     // let size = usize::from_str_radix(&line[0..4], 16).unwrap();
     let line = String::from(&line[4..line.chars().count()]);
     return line
 }
 
+/// Complete message sent to server for packfile negotiation
 fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
     write_pack_line(&format!("want {}", want), stdin);
     write_pack_line("", stdin);
@@ -146,13 +142,12 @@ fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
     write_pack_line("done", stdin);
 }
 
+/// Write line to stdin for git pack communication
 fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
     if "".eq(line) {
-        println!("\nC: 0000");
         stdin.write_all(String::from("0000").as_bytes()).unwrap()
     } else {
         let message = format!("{0:04x}{1}\n", line.as_bytes().len() + 4 + 1, line);
-        println!("C: {message}");
         stdin.write_all(message.as_bytes()).unwrap();
     }
 }
@@ -175,6 +170,7 @@ fn ignore_gtr(dir: &str) {
     }
 }
 
+/// Add gtr related files to gitignore
 fn store_in_gitignore(gitignore_path: &PathBuf) {
     let store = |mut file: File| { file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).unwrap() };
 
