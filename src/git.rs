@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read, ErrorKind, Write};
-use std::process::{Command, Child, Stdio, ChildStdin};
+use std::process::{Command, Child, Stdio, ChildStdin, ChildStdout};
 use std::str;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -49,33 +49,19 @@ pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
     let mut expect_pack = false;
     loop {
         if expect_pack {
-            let mut pack_content = Vec::new();
-            match buffer.read_to_end(&mut pack_content) {
-                Err(e) => println!("an error!: {:?}", e),
-                Ok(_) => {
-                    let file_path = Path::new(dir).join("..").join(format!("{want}.pack"));
-                    let mut file = File::create(file_path).unwrap();
-                    file.write_all(&pack_content).unwrap();
-                    break
-                }
-            };
+            write_pack_file(dir, want, &mut buffer);
+            break
         } else {
+            // NOTE: we already know all the refs thus do not need to validate anything
             // XXX Vec::new() - fails out of bound
             let mut message_buff = [0; 65535]; // FFFF
             match buffer.read(&mut message_buff) {
-                Err(e) => println!("an error!: {:?}", e),
+                Err(e) => println!("Error generating pack file: {:?}", e),
                 Ok(_) => {
                     let line = String::from_utf8(message_buff.to_vec()).unwrap();
                     let line = read_line(line);
 
-                    if !expect_nack {
-                        if line.contains("\n0000") {
-                            write_message(want, have, &mut stdin);
-                            expect_nack = true;
-                        }
-
-                        continue;
-                    } else {
+                    if expect_nack {
                         let res = match have {
                             Some(_) => ack_objects_continue(&line),
                             None => wait_for_nak(&line)
@@ -83,13 +69,32 @@ pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
                         if res {
                             expect_pack = true;
                         }
-                        continue;
+                    } else {
+                        if line.contains("\n0000") {
+                            write_message(want, have, &mut stdin);
+                            expect_nack = true;
+                        }
                     };
+                    continue;
                 }
             };
         }
     };
 }
+
+fn write_pack_file(dir: &str, want:  &'static str, buffer: &mut BufReader<ChildStdout>) {
+    let mut pack_content = Vec::new();
+    match buffer.read_to_end(&mut pack_content) {
+        Err(e) => println!("Error reading pack file content: {:?}", e),
+        Ok(_) => {
+            let file_path = Path::new(dir).join("..").join(format!("{want}.pack"));
+            let mut file = File::create(file_path).unwrap();
+            file.write_all(&pack_content).unwrap();
+        }
+    };
+}
+
+// fn request_pack_file(buffer: &mut BufReader<ChildStdout>, want: &'static str, have: &'static str) { }
 
 fn start_pack_upload_process(dir: &str) -> Child {
     let git_dir = Path::new(dir).join(".git");
