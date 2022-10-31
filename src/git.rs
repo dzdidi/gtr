@@ -1,14 +1,9 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{BufReader, Read, ErrorKind, Write, BufRead, Stdin};
+use std::io::{BufReader, Read, ErrorKind, Write};
 use std::process::{Command, Child, Stdio, ChildStdin};
 use std::str;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
-use std::thread;
-use std::thread::sleep;
-use std::time::Duration;
-use std::sync::{Arc, Mutex};
 use regex::Regex;
 
 static SETTINGS_DIR: &str = ".gtr";
@@ -44,40 +39,56 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 // XXX wait for server to send 0000 and start sending wants
 // for some reason I see no 0000 in servers response
 pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
-    // XXX consider moving to tokio
     let pack_upload = start_pack_upload_process(dir);
 
     let mut stdin = pack_upload.stdin.unwrap();
     let stdout = pack_upload.stdout.unwrap();
     let mut buffer = BufReader::new(stdout);
-    let mut flag = false;
+
+    let mut expect_nack = false;
+    let mut expect_pack = false;
     loop {
-        let mut buf = [0; 65535];
-        println!("Flag: {flag}");
-        // XXX server does not send response immediately and buffer is empty for next iter?
-        match buffer.read(&mut buf) {
-            Ok(_) => {
-                let line = String::from_utf8(buf.to_vec()).unwrap();
-                let line = read_line(line);
+        if expect_pack {
+            let mut pack_content = Vec::new();
+            match buffer.read_to_end(&mut pack_content) {
+                Err(e) => println!("an error!: {:?}", e),
+                Ok(_) => {
+                    let file_path = Path::new(dir).join("..").join(format!("{want}.pack"));
+                    let mut file = File::create(file_path).unwrap();
+                    file.write_all(&pack_content).unwrap();
+                    break
+                }
+            };
+        } else {
+            // XXX Vec::new() - fails out of bound
+            let mut message_buff = [0; 65535]; // FFFF
+            match buffer.read(&mut message_buff) {
+                Err(e) => println!("an error!: {:?}", e),
+                Ok(_) => {
+                    let line = String::from_utf8(message_buff.to_vec()).unwrap();
+                    let line = read_line(line);
 
-                // server is done
-                if line.contains("\n0000") {
-                    write_message(want, have, &mut stdin);
-                    flag = true;
-                    continue;
-                } else if flag {
-                    let res = match have {
-                        Some(_) => ack_objects_continue(&line),
-                        None => wait_for_nak(&line)
+                    if !expect_nack {
+                        if line.contains("\n0000") {
+                            write_message(want, have, &mut stdin);
+                            expect_nack = true;
+                        }
+
+                        continue;
+                    } else {
+                        let res = match have {
+                            Some(_) => ack_objects_continue(&line),
+                            None => wait_for_nak(&line)
+                        };
+                        if res {
+                            expect_pack = true;
+                        }
+                        continue;
                     };
-                    if res { break } else { continue; }
-                };
-            }
-            Err(e) => println!("an error!: {:?}", e),
-        };
+                }
+            };
+        }
     };
-
-    println!("Entering next stage");
 }
 
 fn start_pack_upload_process(dir: &str) -> Child {
@@ -110,17 +121,14 @@ fn ack_objects_continue(line: &str) -> bool {
 }
 
 fn read_line(line: String) -> String {
-    let size = usize::from_str_radix(&line[0..4], 16).unwrap();
-    println!("READING: {line}");
-    let line = &line[4..line.chars().count()];
-    println!("SIZE: {size} == LEN {}", line.chars().count());
-    // TODO: implement ack nack processing
-    return String::from(line)
+    // NOTE lines size is actually passed but 
+    // let size = usize::from_str_radix(&line[0..4], 16).unwrap();
+    let line = String::from(&line[4..line.chars().count()]);
+    return line
 }
 
 fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
-    println!("Writing");
-    write_pack_line(&format!("want {} multi_ack side-band-64k ofs-delta", want), stdin);
+    write_pack_line(&format!("want {}", want), stdin);
     write_pack_line("", stdin);
     match have {
         Some(have) => {
@@ -134,15 +142,12 @@ fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
 
 fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
     if "".eq(line) {
-        println!("{:#?}", String::from("0000"));
         stdin.write_all(String::from("0000").as_bytes()).unwrap()
     } else {
-        let message = format!("{0:04}{1}\n", line.chars().count() + 4 + 1, line);
-        println!("{message:#?}");
+        let message = format!("{0:04x}{1}\n", line.as_bytes().len() + 4 + 1, line);
         stdin.write_all(message.as_bytes()).unwrap();
-    };
+    }
 }
-
 
 /// Add .gtr directory to gitignore in provided repository
 fn ignore_gtr(dir: &str) {
