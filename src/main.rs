@@ -40,8 +40,9 @@ fn main() {
             "list" => list(dir), // and exit?
             "pack" =>{
                 let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
-                upload_pack(dir, want, None)
-                //upload_pack(dir, want, Some(want))
+                let have = Some("cced046c2b0435ff258de91580720427316f07ae");
+                // upload_pack(dir, want, None)
+                upload_pack(dir, want, have)
             },
             _ => panic!("Unrecognized command")
         }

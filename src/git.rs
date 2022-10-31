@@ -60,6 +60,7 @@ pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
                 Ok(_) => {
                     let line = String::from_utf8(message_buff.to_vec()).unwrap();
                     let line = read_line(line);
+                    println!("S: {line}");
 
                     if expect_nack {
                         let res = match have {
@@ -122,7 +123,7 @@ fn ack_objects_continue(line: &str) -> bool {
     let con_regex = Regex::new("continue$").unwrap();
     let is_con = con_regex.is_match(line);
 
-    return !is_ack || is_con
+    return is_ack && !is_con
 }
 
 fn read_line(line: String) -> String {
@@ -147,9 +148,11 @@ fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
 
 fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
     if "".eq(line) {
+        println!("\nC: 0000");
         stdin.write_all(String::from("0000").as_bytes()).unwrap()
     } else {
         let message = format!("{0:04x}{1}\n", line.as_bytes().len() + 4 + 1, line);
+        println!("C: {message}");
         stdin.write_all(message.as_bytes()).unwrap();
     }
 }
