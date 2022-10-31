@@ -1,6 +1,6 @@
 use std::env;
 
-use gtr::git::{setup, select_exsiting_branches};
+use gtr::git::{setup, select_exsiting_branches, upload_pack};
 use gtr::export_settings::{add, remove, list};
 
 // XXX UX:
@@ -38,6 +38,11 @@ fn main() {
             "add" => add(dir, &select_exsiting_branches(dir, &args).iter().collect()),
             "remove" => remove(dir, &args),
             "list" => list(dir), // and exit?
+            "pack" =>{
+                let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
+                upload_pack(dir, want, None)
+                //upload_pack(dir, want, Some(want))
+            },
             _ => panic!("Unrecognized command")
         }
     }

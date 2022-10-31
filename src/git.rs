@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{BufReader, Read, ErrorKind, Write, BufRead};
-use std::process::{Command, Child, Stdio};
+use std::io::{BufReader, Read, ErrorKind, Write, BufRead, Stdin};
+use std::process::{Command, Child, Stdio, ChildStdin};
 use std::str;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
-use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use regex::Regex;
 
 static SETTINGS_DIR: &str = ".gtr";
@@ -41,55 +41,60 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
         .collect();
 }
 
-/// Generates necessary pack files
-// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-pub fn upload_pack(dir: &str, want: &str, have: Option<&str>) {
-    let git_dir = Path::new(dir).join(".git");
+// XXX wait for server to send 0000 and start sending wants
+// for some reason I see no 0000 in servers response
+pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
+    // XXX consider moving to tokio
+    let pack_upload = start_pack_upload_process(dir);
 
-    let (sender1, receiver1) = channel(); // channel to read data from pack server
-    let (sender2, receiver2) = channel(); // channel to send data to pack server
-
-    let mut upload_pack_process = start_upload_pack_process(git_dir.to_str().unwrap(), sender1, receiver2);
-    // NOTE: reference discovery
-    write_message(want, have, &sender2);
-
-    // XXX
-    //start_upload_pack_command_thread(Mutex::new(sender2.clone()));
-
-    let should_terminate = Arc::new(AtomicBool::new(false));
-
-    while !should_terminate.load(Ordering::Relaxed) {
-        match receiver1.try_recv() {
-            Ok(line) => {
-                // NOTE: reference discovery (cont)
-                // NOTE: server lists refs, which are already known from the ls-remote command
-                // so we wait for it to signal end.
+    let mut stdin = pack_upload.stdin.unwrap();
+    let stdout = pack_upload.stdout.unwrap();
+    let mut buffer = BufReader::new(stdout);
+    let mut flag = false;
+    loop {
+        let mut buf = [0; 65535];
+        println!("Flag: {flag}");
+        // XXX server does not send response immediately and buffer is empty for next iter?
+        match buffer.read(&mut buf) {
+            Ok(_) => {
+                let line = String::from_utf8(buf.to_vec()).unwrap();
                 let line = read_line(line);
 
-                // TODO: read from server again for ACK and NACK and for PACKFILE stream
-                let res = match have {
-                    Some(_) => ack_objects_continue(&line),
-                    None => wait_for_nak(&line)
+                // server is done
+                if line.contains("\n0000") {
+                    write_message(want, have, &mut stdin);
+                    flag = true;
+                    continue;
+                } else if flag {
+                    let res = match have {
+                        Some(_) => ack_objects_continue(&line),
+                        None => wait_for_nak(&line)
+                    };
+                    if res { break } else { continue; }
                 };
+            }
+            Err(e) => println!("an error!: {:?}", e),
+        };
+    };
 
-                if !res {
-                    return
-                }
-                // TODO: pack file negotiation
-                continue;
-            }
-            Err(TryRecvError::Empty) => {
-                sleep(Duration::from_secs(1));
-                continue;
-            }
-            Err(e) => {
-                println!("Error: {:?}", e);
-            }
-        }
-    }
-
-    upload_pack_process.kill().expect("Failed terminate pack upload process");
+    println!("Entering next stage");
 }
+
+fn start_pack_upload_process(dir: &str) -> Child {
+    let git_dir = Path::new(dir).join(".git");
+    let pack_upload = Command::new("git-upload-pack")
+        .arg("--strict")
+        .arg(git_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to initialize git pack upload");
+
+    return pack_upload
+}
+
+/// Generates necessary pack files
+// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
 
 fn wait_for_nak(line: &str) -> bool {
     return !line.eq("NAK")
@@ -104,92 +109,40 @@ fn ack_objects_continue(line: &str) -> bool {
     return !is_ack || is_con
 }
 
-fn start_upload_pack_process(dir: &str, sender: Sender<String>, receiver: Receiver<String>) -> Child {
-    let mut pack_upload = Command::new("git-upload-pack")
-        .arg("--strict")
-        .arg(dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to initialize git pack upload");
-
-    start_upload_pack_process_thread(&mut pack_upload, sender, receiver);
-
-    pack_upload
-}
-
-fn start_upload_pack_process_thread(pack_upload: &mut Child, sender: Sender<String>, receiver: Receiver<String>) {
-    let mut stdin = pack_upload.stdin.take().expect("Failed to get pack upload input stream");
-    let stdout = pack_upload.stdout.take().expect("Failed to get pack upload output");
-
-    thread::spawn(move || {
-        let mut f = BufReader::new(stdout);
-        loop {
-            match receiver.try_recv() {
-                Ok(line) => {
-                    // XXX reads from stdin and writes to stdout
-                    println!("writing: {line}");
-                    stdin.write_all(line.as_bytes()).expect("Failed to write to pack upload input stream");
-                }
-                Err(TryRecvError::Empty) => {
-                    sleep(Duration::from_secs(1));
-                    continue;
-                }
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                }
-            }
-            let mut buf = String::new();
-            match f.read_line(&mut buf) {
-                Ok(_) => {
-                    sender.send(buf).unwrap();
-                    continue;
-                }
-                Err(e) => {
-                    println!("an error!: {:?}", e);
-                    break;
-                }
-            }
-        }
-    });
-}
-
-fn start_upload_pack_command_thread(mutex: Mutex<Sender<String>>) {
-    thread::spawn(move || {
-        let sender = mutex.lock().unwrap();
-        sender.send(String::from("dont know what to send from command thread")).unwrap();
-    });
-}
-
 fn read_line(line: String) -> String {
-    //let size = usize::from_str_radix(&l[0..4], 16).unwrap();
-    let line = &line[4..line.len()];
+    let size = usize::from_str_radix(&line[0..4], 16).unwrap();
     println!("READING: {line}");
+    let line = &line[4..line.chars().count()];
+    println!("SIZE: {size} == LEN {}", line.chars().count());
     // TODO: implement ack nack processing
     return String::from(line)
 }
 
-fn write_message(want: &str, have: Option<&str>, sender_channel: &Sender<String>) {
-    write_pack_line(&format!("want {}", want), sender_channel);
-    write_pack_line("", sender_channel);
+fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
+    println!("Writing");
+    write_pack_line(&format!("want {} multi_ack side-band-64k ofs-delta", want), stdin);
+    write_pack_line("", stdin);
     match have {
         Some(have) => {
-            write_pack_line(&format!("have {}", have), sender_channel);
-            write_pack_line("", sender_channel);
+            write_pack_line(&format!("have {}", have), stdin);
+            write_pack_line("", stdin);
         },
         None => {}
     }
-    write_pack_line("done", sender_channel);
+    write_pack_line("done", stdin);
 }
 
-fn write_pack_line(line: &str, sender_channel: &Sender<String>) {
+fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
     if "".eq(line) {
-        sender_channel.send(String::from("0000\n")).unwrap()
+        println!("{:#?}", String::from("0000"));
+        stdin.write_all(String::from("0000").as_bytes()).unwrap()
     } else {
-        let message = format!("{0:04}{1}\n", line.len() + 4 + 1, line);
-        sender_channel.send(message).unwrap();
+        let message = format!("{0:04}{1}\n", line.chars().count() + 4 + 1, line);
+        println!("{message:#?}");
+        stdin.write_all(message.as_bytes()).unwrap();
     };
 }
+
 
 /// Add .gtr directory to gitignore in provided repository
 fn ignore_gtr(dir: &str) {
