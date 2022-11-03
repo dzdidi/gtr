@@ -37,7 +37,6 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 }
 
 /// Generates necessary pack files
-// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
 pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
     let pack_upload = start_pack_upload_process(dir);
 
@@ -63,15 +62,19 @@ fn write_pack_file(dir: &str, want:  &'static str, buffer: &mut BufReader<ChildS
 }
 
 /// Talk to git-upload-pack until it is ready to send pack files
+// NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
 fn request_pack_file(buffer: &mut BufReader<ChildStdout>, stdin: &mut ChildStdin, want: &'static str, have: Option<&'static str>) {
     let mut expect_nack = false;
     loop {
-        // Vec::new() - fails out of bound
+        // FIXME: two bytes big endian specidies message length, each message except zero messages
+        // (0000) ends with new line
+        // parsing should be similar to the one in lightning messages
         let mut message_buff = [0; 65535]; // FFFF
         match buffer.read(&mut message_buff) {
             Err(e) => println!("Error requesting pack file: {:?}", e),
             Ok(_) => {
                 let line = read_line(String::from_utf8(message_buff.to_vec()).unwrap());
+
                 let end_of_list = line.contains("\n0000");
                 // We do not need to check git server refs as we know them from ls
                 if !(expect_nack || end_of_list) { continue; }
