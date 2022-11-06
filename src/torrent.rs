@@ -1,7 +1,62 @@
+use std::collections::HashSet;
+use std::net::{SocketAddr, Ipv4Addr, SocketAddrV4};
+use std::thread;
+use std::io::{self, Read};
+
+use bip_dht::{DhtBuilder, Router};
+use bip_handshake::Handshaker;
+use bip_util::bt::{InfoHash, PeerId};
+use bip_handshake::{HandshakerBuilder, InitiateMessage, Protocol};
+use bip_handshake::transports::TcpTransport;
+
+pub fn start_dht() {
+    // TODO: hash generation (this is probably mutable hash
+    let hash = InfoHash::from_bytes(b"My Unique Info Hash");
+
+    // TODO: make configurable
+    let router = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 6882));
+
+    // TODO: make configurable
+    let bind_address = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 6889);
+    let source = SocketAddr::V4(bind_address);
+
+    // TODO: use more sophisticated handshaker, see example from bip_handshake
+    //let handshaker = SimpleHandshaker{ filter: HashSet::new(), count: 0 };
+    let peer_id = (*b"-UT2060-000000000000").into(); // bootstrap peer_id???
+    let handshaker = HandshakerBuilder::new();
+
+    let dht = DhtBuilder::with_node(router)
+        .set_source_addr(source)
+        .set_read_only(false)
+        .start_mainline(handshaker)
+        .unwrap();
+
+    // Spawn a thread to listen to and report events
+    let events = dht.events();
+    thread::spawn(move || {
+        // TODO: handle events
+        for event in events {
+            println!("\nReceived Dht Event {:?}", event);
+        }
+    });
+    
+    // Let the user announce or search on our info hash
+    let stdin = io::stdin();
+    let stdin_lock = stdin.lock();
+    for byte in stdin_lock.bytes() {
+        match &[byte.unwrap()] {
+            b"a" => dht.search(hash.into(), true),
+            b"s" => dht.search(hash.into(), false),
+            _   => ()
+        }
+    }
+}
 // TODO:
 // 1. spin up DHT and make it listen for connections on on configurable <listen net port>
-// NOTE: bip-dht will immediately try to bootstrap so with provide bootstrap nodes
+// NOTE: bip-dht will immediately try to bootstrap so with provided bootstrap nodes
 // NOTE: for local setup bip-dht needs three nodes, as table will not be populated
+// NOTE: UPDATE: router is not included into nodes table, thus if DHT is started with node instead
+// of with router, two nodes should suffice
 //     by information from the initial node
 //
 // 2. anounce "<sha>" to DHT on configurable <announce net port>
