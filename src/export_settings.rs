@@ -11,7 +11,7 @@ static SETTINGS_FILE: &str = "gittorrentd-daemon-export";
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches to be added.
 /// It adds branches resolving duplication, stores them .gtr/gittorrent-daemon-export.
-pub fn add(dir: &str, new_branches: &Vec<&String>) {
+pub fn include(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
     let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
@@ -90,12 +90,12 @@ mod tests {
         res_branches.sort();
 
         let input_branches: Vec<&String> = branches.iter().collect();
-        add(dir, &input_branches);
+        include(dir, &input_branches);
         let res = read_old_branches(dir);
         assert!(res.eq(&branches));
 
         let input_branches: Vec<&String> = more_branches.iter().collect();
-        add(dir, &input_branches);
+        include(dir, &input_branches);
         assert!(read_old_branches(dir).eq(&res_branches));
 
         let input_branches: Vec<&String> = res_branches.iter().collect();
