@@ -1,6 +1,6 @@
 use std::io::{Read, ErrorKind, Write};
 use std::path::Path;
-use std::fs::File;
+use std::fs::{File, create_dir_all};
 use std::collections::HashSet;
 
 // manage content of `dir/.git/gittorrentd-daemon-export`
@@ -40,7 +40,9 @@ pub fn list(dir: &str) {
 }
 
 fn read_old_branches(dir: &str) -> Vec<String> {
-    let settings_path = Path::new(dir).join(SETTINGS_DIR).join(SETTINGS_FILE);
+    let settings_dir = Path::new(dir).join(SETTINGS_DIR);
+    let settings_path = settings_dir.join(SETTINGS_FILE);
+
     match File::open(&settings_path) {
         Ok(mut file) => {
             let mut data = String::new();
@@ -50,6 +52,7 @@ fn read_old_branches(dir: &str) -> Vec<String> {
         Err(e) => {
             match e.kind() {
                 ErrorKind::NotFound => {
+                    create_dir_all(&settings_dir).expect("Can not create gtr directory");
                     File::create(&settings_path).expect("Can not create settings file");
                     return vec!(String::from(""))
                 },
