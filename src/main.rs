@@ -33,6 +33,9 @@ fn main() {
     let dir = args.remove(0); // second is a target directory
     setup(dir);
 
+    // TODO: write a man
+    if args.len() == 0 { panic!("provide arguments") }
+
     if args.len() > 0 {
         let action = args.remove(0).as_str(); // third is action
         match action {
