@@ -15,7 +15,11 @@ pub fn include(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
     let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
-    let final_branches: Vec<&String> = old_branches.union(&new_branches).into_iter().map(|b| *b).collect();
+    let final_branches: Vec<&String> = old_branches
+        .union(&new_branches)
+        .into_iter()
+        .map(|b| *b)
+        .collect();
     write_new_branches(dir, &final_branches);
 }
 
@@ -27,7 +31,11 @@ pub fn remove(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
     let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
-    let final_branches: Vec<&String> = old_branches.difference(&new_branches).into_iter().map(|b| *b).collect();
+    let final_branches: Vec<&String> = old_branches
+        .difference(&new_branches)
+        .into_iter()
+        .map(|b| *b)
+        .collect();
     write_new_branches(dir, &final_branches);
 }
 
@@ -47,7 +55,11 @@ fn read_old_branches(dir: &str) -> Vec<String> {
         Ok(mut file) => {
             let mut data = String::new();
             file.read_to_string(&mut data).expect("Can not read file content");
-            return data.split("\n").into_iter().map(|s| String::from(s)).filter(|s| !s.eq("")).collect();
+            return data
+                .split("\n")
+                .into_iter()
+                .map(|s| String::from(s)).filter(|s| !s.eq(""))
+                .collect();
         },
         Err(e) => {
             match e.kind() {
@@ -81,12 +93,21 @@ mod tests {
     #[test]
     fn adds_entries_to_settings() {
         let dir = ".";
-        let mut branches: Vec<String> = vec!["testA", "testB"].iter().map(|s| String::from(*s)).collect();
+        let mut branches: Vec<String> = vec!["testA", "testB"]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect();
         branches.sort();
-        let mut more_branches: Vec<String> = vec!["testC", "testB", "testD"].iter().map(|s| String::from(*s)).collect();
+        let mut more_branches: Vec<String> = vec!["testC", "testB", "testD"]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect();
         more_branches.sort();
 
-        let mut res_branches: Vec<String> = vec!["testA", "testB", "testC", "testD"].iter().map(|s| String::from(*s)).collect();
+        let mut res_branches: Vec<String> = vec!["testA", "testB", "testC", "testD"]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect();
         res_branches.sort();
 
         let input_branches: Vec<&String> = branches.iter().collect();

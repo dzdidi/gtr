@@ -1,6 +1,6 @@
 use std::env;
 
-use gtr::git::{setup, select_exsiting_branches, upload_pack};
+use gtr::git::{gtr_setup, select_exsiting_branches, upload_pack};
 use gtr::export_settings::{include, remove, list};
 
 // XXX UX:
@@ -39,7 +39,7 @@ fn main() {
     args.remove(0); // first argument is a command name
     // TODO: write a manual instead also for `?` `--help` etc
     let dir = args.remove(0); // second must be a target directory
-    setup(dir);
+    gtr_setup(dir);
 
     // TODO: write a manual instead also for `?` `--help` etc
     if args.len() == 0 { panic!("provide arguments") }

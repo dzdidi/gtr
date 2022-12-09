@@ -11,12 +11,15 @@ static SETTINGS_DIR: &str = ".gtr";
 /// Selects only existing branches
 pub fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec<String> {
     let availalbe: HashSet<String> = ls_remote(dir).into_keys().collect();
-    let requested: HashSet<String> = branches.iter().map(|s| String::from("refs/heads/") + s).collect();
+    let requested: HashSet<String> = branches
+        .iter()
+        .map(|s| String::from("refs/heads/") + s)
+        .collect();
     return availalbe.intersection(&requested).into_iter().map(|s| String::from(s)).collect()
 }
 
 /// Checks if directory is a git repository, adds service folder to gitignore
-pub fn setup(dir: &str) {
+pub fn gtr_setup(dir: &str) {
     is_git(dir);
     ignore_gtr(dir);
 }
@@ -42,16 +45,16 @@ pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
 
     let mut stdin = pack_upload.stdin.unwrap();
     let stdout = pack_upload.stdout.unwrap();
-    let mut buffer = BufReader::new(stdout);
+    let mut buf = BufReader::new(stdout);
 
-    request_pack_file(&mut buffer, &mut stdin, want, have);
-    write_pack_file(dir, want, &mut buffer);
+    request_pack_file(&mut buf, &mut stdin, want, have);
+    write_pack_file(dir, want, &mut buf);
 }
 
 /// Store pack file to fs
-fn write_pack_file(dir: &str, want:  &'static str, buffer: &mut BufReader<ChildStdout>) {
+fn write_pack_file(dir: &str, want:  &'static str, buf: &mut BufReader<ChildStdout>) {
     let mut pack_content = Vec::new();
-    match buffer.read_to_end(&mut pack_content) {
+    match buf.read_to_end(&mut pack_content) {
         Err(e) => println!("Error reading pack file content: {:?}", e),
         Ok(_) => {
             let file_path = Path::new(dir).join("..").join(format!("{want}.pack"));
@@ -63,17 +66,22 @@ fn write_pack_file(dir: &str, want:  &'static str, buffer: &mut BufReader<ChildS
 
 /// Talk to git-upload-pack until it is ready to send pack files
 // NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-fn request_pack_file(buffer: &mut BufReader<ChildStdout>, stdin: &mut ChildStdin, want: &'static str, have: Option<&'static str>) {
+fn request_pack_file(
+    buf: &mut BufReader<ChildStdout>,
+    stdin: &mut ChildStdin,
+    want: &'static str,
+    have: Option<&'static str>)
+{
     let mut expect_nack = false;
     loop {
         // FIXME: two bytes big endian specidies message length, each message except zero messages
         // (0000) ends with new line
         // parsing should be similar to the one in lightning messages
-        let mut message_buff = [0; 65535]; // FFFF
-        match buffer.read(&mut message_buff) {
+        let mut msg_buf = [0; 65535]; // FFFF
+        match buf.read(&mut msg_buf) {
             Err(e) => println!("Error requesting pack file: {:?}", e),
             Ok(_) => {
-                let line = read_line(String::from_utf8(message_buff.to_vec()).unwrap());
+                let line = read_line(String::from_utf8(msg_buf.to_vec()).unwrap());
 
                 let end_of_list = line.contains("\n0000");
                 // We do not need to check git server refs as we know them from ls
