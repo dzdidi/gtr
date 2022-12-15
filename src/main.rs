@@ -1,7 +1,10 @@
-use std::env;
+// use std::env;
+use std::path::Path;
+
+use clap::Parser;
 
 use gtr::git::{gtr_setup, select_exsiting_branches, upload_pack};
-use gtr::export_settings::{include, remove, list};
+// use gtr::export_settings::{include, remove, list};
 
 // XXX UX:
 // Original gittorrent allows user to share all/many dirs from common parent directory by running gittorrentd in it.
@@ -32,32 +35,63 @@ use gtr::export_settings::{include, remove, list};
 // TODO: create nested "test" directory to run tests within it.
 // TODO: (what is this) read branches from file? get their hash from git follow original gittorrent
 // TODO: write integration test
+
+
+// TODO: see https://github.com/clap-rs/clap/blob/master/examples/git.rs
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum Action {
+    Include,
+    Remove,
+    List,
+}
+/// Arguments for gtr
+#[derive(Parser, Debug)]
+struct Args {
+    /// directory to be handled by gtr
+    // #[arg(short, long, default_value_t = String::from("."))]
+    #[arg(short, long)]
+    dir: String,
+    /// action to be made by gtr
+    #[arg(short, long, value_enum)]
+    action: Action,
+    #[arg(short, long, value_enum)]
+    branches: String[],
+}
 fn main() {
-    let args = Vec::from_iter(env::args());
-    let mut args: Vec<&String> = args.iter().collect();
+    let arguments = Args::parse();
+    println!("{:?}", arguments);
+    gtr_setup(&arguments.dir);
 
-    args.remove(0); // first argument is a command name
-    // TODO: write a manual instead also for `?` `--help` etc
-    let dir = args.remove(0); // second must be a target directory
-    gtr_setup(dir);
+//    if args.len() > 0 {
+//        let action = args.remove(0).as_str(); // third is action
+//        match action {
+//            // NOTE: alternatively forward commands to the git itself
+//            "include" => include(dir, &select_exsiting_branches(dir, &args).iter().collect()),
+//            "remove" => remove(dir, &args),
+//            "list" => list(dir), // and exit?
+//            // NOTE: cli test
+//            "pack" =>{
+//                let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
+//                let have = Some("cced046c2b0435ff258de91580720427316f07ae");
+//                upload_pack(dir, want, have)
+//            },
+//            _ => panic!("Unrecognized command"),
+//        }
+//    }
+}
 
-    // TODO: write a manual instead also for `?` `--help` etc
-    if args.len() == 0 { panic!("provide arguments") }
-
-    if args.len() > 0 {
-        let action = args.remove(0).as_str(); // third is action
-        match action {
-            // NOTE: alternatively forward commands to the git itself
-            "include" => include(dir, &select_exsiting_branches(dir, &args).iter().collect()),
-            "remove" => remove(dir, &args),
-            "list" => list(dir), // and exit?
-            // NOTE: cli test
-            "pack" =>{
-                let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
-                let have = Some("cced046c2b0435ff258de91580720427316f07ae");
-                upload_pack(dir, want, have)
-            },
-            _ => panic!("Unrecognized command"),
-        }
+fn act(action: Action, dir: String) {
+    match action {
+        // NOTE: alternatively forward commands to the git itself
+        Include => include(dir, &select_exsiting_branches(dir, &args).iter().collect()),
+        Remove => remove(dir, &args),
+        List => list(dir), // and exit?
+        // NOTE: cli test
+        pack =>{
+            let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
+            let have = Some("cced046c2b0435ff258de91580720427316f07ae");
+            upload_pack(dir, want, have)
+        },
+        _ => panic!("Unrecognized command"),
     }
 }

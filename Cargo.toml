@@ -7,6 +7,9 @@ edition = "2021"
 
 [dependencies]
 regex = "1"
+# command line parsing utility
+clap = { version = "4.0", features = ["derive"] }
+# bittorrent dht infrastructure dependencies
 bip_dht = "0.6.0"
 bip_handshake = "0.7.1"
 bip_util = "0.5.0"
