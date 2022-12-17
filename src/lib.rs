@@ -1,3 +1,4 @@
-pub mod git;
-pub mod export_settings;
-pub mod torrent;
+pub mod git_interface;
+pub mod exporter;
+pub mod gtr;
+pub mod gti;
