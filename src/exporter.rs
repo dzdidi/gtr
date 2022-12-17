@@ -3,14 +3,14 @@ use std::path::Path;
 use std::fs::{File, create_dir_all};
 use std::collections::HashSet;
 
-// manage content of `dir/.git/gittorrentd-daemon-export`
+// manage content of `dir/.gtr/gtrd-export
 static SETTINGS_DIR: &str = ".gtr";
-static SETTINGS_FILE: &str = "gittorrentd-daemon-export";
+static SETTINGS_FILE: &str = "gtrd-export";
 
-/// Add branches to be shared via gittorrent
+/// Add branches to be shared via gtrd
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches to be added.
-/// It adds branches resolving duplication, stores them .gtr/gittorrent-daemon-export.
+/// It adds branches resolving duplication, stores them .gtr/gtrd-export.
 pub fn include(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
@@ -23,10 +23,10 @@ pub fn include(dir: &str, new_branches: &Vec<&String>) {
     write_new_branches(dir, &final_branches);
 }
 
-/// Removes branches to be shared via gittorrent
+/// Removes branches to be shared via gtrd
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches not to be shared.
-/// It removes branches resolving duplication, stores new settings in .gtr/gittorrent-daemon-export.
+/// It removes branches resolving duplication, stores new settings in .gtr/gtrd-export.
 pub fn remove(dir: &str, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
@@ -39,13 +39,18 @@ pub fn remove(dir: &str, new_branches: &Vec<&String>) {
     write_new_branches(dir, &final_branches);
 }
 
-/// Lists branches currently shared via gittorrent
+/// Lists branches currently shared via gtrd
 ///
-/// The parameter is the git repo directory. It reads branches stored in .gtr/gittorrentd-daemon-export
+/// The parameter is the git repo directory. It reads branches stored in .gtr/gtrd-export
 pub fn list(dir: &str) {
     let settings = read_old_branches(dir);
     println!("list: {settings:?}");
 }
+
+// TODO: implement method which will guarantee that `gtd` is running on startup
+// LINUX: systemd
+// MACOS: launchd
+// WINDOWS: task scheduler
 
 fn read_old_branches(dir: &str) -> Vec<String> {
     let settings_dir = Path::new(dir).join(SETTINGS_DIR);
