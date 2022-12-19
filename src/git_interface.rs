@@ -40,6 +40,7 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 }
 
 /// Generates necessary pack files
+// TODO: move to tokio
 pub fn upload_pack(dir: &PathBuf, want: &'static str, have: Option<&'static str>) {
     let pack_upload = start_pack_upload_process(dir);
 

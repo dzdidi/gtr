@@ -34,27 +34,31 @@ use gtr::gti::cli;
 // TODO: write integration test
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
     match cli().get_matches().subcommand() {
         Some(("init", sub_matches)) => include(
             sub_matches.get_one("path").unwrap(),
             &vec![&String::from("master")]
-        ),
+        ).await,
         Some(("share", sub_matches)) => {
             let branches = sub_matches
                 .get_many::<String>("branches")
                 .unwrap_or_default()
                 .collect::<Vec<_>>();
 
-            include(sub_matches.get_one("path").unwrap(), &branches);
+            include(sub_matches.get_one("path").unwrap(), &branches).await;
         }
-        Some(("list", sub_matches)) => list(sub_matches.get_one("path").unwrap()),
+        Some(("list", sub_matches)) => {
+            let branches = list(sub_matches.get_one("path").unwrap()).await;
+            println!("shared branches: {branches:?}");
+        },
         Some(("remove", sub_matches)) => {
             let branches = sub_matches
                 .get_many::<String>("branches")
                 .unwrap_or_default()
                 .collect::<Vec<_>>();
-            remove(sub_matches.get_one("path").unwrap(), &branches)
+            remove(sub_matches.get_one("path").unwrap(), &branches).await;
         }
         Some(("pack", sub_matches)) => {
             let want = "447990420af9fe891cfe7880d04d9769e4168f7a";

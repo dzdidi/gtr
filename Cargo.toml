@@ -11,6 +11,9 @@ about = "decentralized colaborative change management system"
 regex = "1"
 # command line parsing utility
 clap = { version = "4.0", features = ["cargo"] }
+# async
+# TODO: check what exactly is needed
+tokio = { version = "1", features = ["full"] }
 # bittorrent dht infrastructure dependencies
 bip_dht = "0.6.0"
 bip_handshake = "0.7.1"
