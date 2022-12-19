@@ -1,9 +1,7 @@
 // use std::env;
-use gtr::git_interface::{gtr_setup, select_exsiting_branches, upload_pack};
+use gtr::git_interface::upload_pack;
 use gtr::exporter::{include, remove, list};
 use gtr::gti::cli;
-
-use std::ffi::OsString;
 
 // XXX UX:
 // Original gittorrent allows user to share all/many dirs from common parent directory by running gittorrentd in it.
@@ -38,40 +36,32 @@ use std::ffi::OsString;
 
 fn main() {
     match cli().get_matches().subcommand() {
-        Some(("init", _sub_matches)) => { println!("init") }
-        Some(("share", _sub_matches)) => { println!("share") }
-        Some(("list", _sub_matches)) => { println!("list") }
-        Some(("remove", _sub_matches)) => { println!("remove") }
-        Some((ext, sub_matches)) => {
-            let args = sub_matches
-                .get_many::<OsString>("")
-                .into_iter()
-                .flatten()
+        Some(("init", sub_matches)) => include(
+            sub_matches.get_one("path").unwrap(),
+            &vec![&String::from("master")]
+        ),
+        Some(("share", sub_matches)) => {
+            let branches = sub_matches
+                .get_many::<String>("branches")
+                .unwrap_or_default()
                 .collect::<Vec<_>>();
-            println!("Calling out to {:?} with {:?}", ext, args);
+
+            include(sub_matches.get_one("path").unwrap(), &branches);
+        }
+        Some(("list", sub_matches)) => list(sub_matches.get_one("path").unwrap()),
+        Some(("remove", sub_matches)) => {
+            let branches = sub_matches
+                .get_many::<String>("branches")
+                .unwrap_or_default()
+                .collect::<Vec<_>>();
+            remove(sub_matches.get_one("path").unwrap(), &branches)
+        }
+        Some(("pack", sub_matches)) => {
+            let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
+            let have = Some("cced046c2b0435ff258de91580720427316f07ae");
+            let dir = sub_matches.get_one("path").unwrap();
+            upload_pack(dir, want, have)
         }
         _ => unreachable!(), // If all subcommands are defined above, anything else is unreachabe!()
     }
-    // TODO: use gti
-//    let arguments = Args::parse();
-//    println!("{:?}", arguments);
-//    gtr_setup(&arguments.dir);
-//
-//    if args.len() > 0 {
-//        let action = args.remove(0).as_str(); // third is action
-//        match action {
-//            // NOTE: alternatively forward commands to the git itself
-//            "include" => include(dir, &select_exsiting_branches(dir, &args).iter().collect()),
-//            "remove" => remove(dir, &args),
-//            "list" => list(dir), // and exit?
-//            // NOTE: cli test
-//            "pack" =>{
-//                let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
-//                let have = Some("cced046c2b0435ff258de91580720427316f07ae");
-//                upload_pack(dir, want, have)
-//            },
-//            _ => panic!("Unrecognized command"),
-//        }
-//    }
 }
-

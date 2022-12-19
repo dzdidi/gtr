@@ -1,5 +1,5 @@
 use std::io::{Read, ErrorKind, Write};
-use std::path::Path;
+use std::path::PathBuf;
 use std::fs::{File, create_dir_all};
 use std::collections::HashSet;
 
@@ -11,7 +11,7 @@ static SETTINGS_FILE: &str = "gtrd-export";
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches to be added.
 /// It adds branches resolving duplication, stores them .gtr/gtrd-export.
-pub fn include(dir: &str, new_branches: &Vec<&String>) {
+pub fn include(dir: &PathBuf, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
     let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
@@ -27,7 +27,7 @@ pub fn include(dir: &str, new_branches: &Vec<&String>) {
 ///
 /// The first parameter is the git repo directory. The second parameter is the list of branches not to be shared.
 /// It removes branches resolving duplication, stores new settings in .gtr/gtrd-export.
-pub fn remove(dir: &str, new_branches: &Vec<&String>) {
+pub fn remove(dir: &PathBuf, new_branches: &Vec<&String>) {
     let old_branches = read_old_branches(dir);
     let old_branches: HashSet<&String> = old_branches.iter().collect();
     let new_branches: HashSet<&String> = new_branches.iter().map(|s| *s).collect();
@@ -42,7 +42,7 @@ pub fn remove(dir: &str, new_branches: &Vec<&String>) {
 /// Lists branches currently shared via gtrd
 ///
 /// The parameter is the git repo directory. It reads branches stored in .gtr/gtrd-export
-pub fn list(dir: &str) {
+pub fn list(dir: &PathBuf) {
     let settings = read_old_branches(dir);
     println!("list: {settings:?}");
 }
@@ -52,8 +52,8 @@ pub fn list(dir: &str) {
 // MACOS: launchd
 // WINDOWS: task scheduler
 
-fn read_old_branches(dir: &str) -> Vec<String> {
-    let settings_dir = Path::new(dir).join(SETTINGS_DIR);
+fn read_old_branches(dir: &PathBuf) -> Vec<String> {
+    let settings_dir = dir.join(SETTINGS_DIR);
     let settings_path = settings_dir.join(SETTINGS_FILE);
 
     match File::open(&settings_path) {
@@ -79,12 +79,12 @@ fn read_old_branches(dir: &str) -> Vec<String> {
     };
 }
 
-fn write_new_branches(dir: &str, branches: &Vec<&String>) {
+fn write_new_branches(dir: &PathBuf, branches: &Vec<&String>) {
     let mut sorted = branches.to_vec();
     sorted.sort();
     let stred: Vec<&str> = sorted.iter().map(|b| b.as_str()).collect();
 
-    let settings_path = Path::new(dir).join(SETTINGS_DIR).join(SETTINGS_FILE);
+    let settings_path = dir.join(SETTINGS_DIR).join(SETTINGS_FILE);
     match File::create(&settings_path) {
         Ok(mut file) => file.write_all(stred.join("\n").as_bytes()).unwrap(),
         Err(e) => panic!("Cant store settings to file {e}")
@@ -97,7 +97,9 @@ mod tests {
 
     #[test]
     fn adds_entries_to_settings() {
-        let dir = ".";
+        let mut dir = PathBuf::new();
+        dir.push(".");
+
         let mut branches: Vec<String> = vec!["testA", "testB"]
             .iter()
             .map(|s| String::from(*s))
@@ -116,16 +118,17 @@ mod tests {
         res_branches.sort();
 
         let input_branches: Vec<&String> = branches.iter().collect();
-        include(dir, &input_branches);
-        let res = read_old_branches(dir);
+        include(&dir, &input_branches);
+        let res = read_old_branches(&dir);
+        println!("{res:#?}, {branches:#?}");
         assert!(res.eq(&branches));
 
         let input_branches: Vec<&String> = more_branches.iter().collect();
-        include(dir, &input_branches);
-        assert!(read_old_branches(dir).eq(&res_branches));
+        include(&dir, &input_branches);
+        assert!(read_old_branches(&dir).eq(&res_branches));
 
         let input_branches: Vec<&String> = res_branches.iter().collect();
-        remove(dir, &input_branches);
-        assert!(read_old_branches(dir).join("").eq(""));
+        remove(&dir, &input_branches);
+        assert!(read_old_branches(&dir).join("").eq(""));
     }
 }

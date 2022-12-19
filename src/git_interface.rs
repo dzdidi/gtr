@@ -40,7 +40,7 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 }
 
 /// Generates necessary pack files
-pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
+pub fn upload_pack(dir: &PathBuf, want: &'static str, have: Option<&'static str>) {
     let pack_upload = start_pack_upload_process(dir);
 
     let mut stdin = pack_upload.stdin.unwrap();
@@ -52,12 +52,12 @@ pub fn upload_pack(dir: &str, want: &'static str, have: Option<&'static str>) {
 }
 
 /// Store pack file to fs
-fn write_pack_file(dir: &str, want:  &'static str, buf: &mut BufReader<ChildStdout>) {
+fn write_pack_file(dir: &PathBuf, want:  &'static str, buf: &mut BufReader<ChildStdout>) {
     let mut pack_content = Vec::new();
     match buf.read_to_end(&mut pack_content) {
         Err(e) => println!("Error reading pack file content: {:?}", e),
         Ok(_) => {
-            let file_path = Path::new(dir).join("..").join(format!("{want}.pack"));
+            let file_path = dir.join("..").join(format!("{want}.pack"));
             let mut file = File::create(file_path).unwrap();
             file.write_all(&pack_content).unwrap();
         }
@@ -103,8 +103,8 @@ fn request_pack_file(
 }
 
 /// Start git-upload-pack server
-fn start_pack_upload_process(dir: &str) -> Child {
-    let git_dir = Path::new(dir).join(".git");
+fn start_pack_upload_process(dir: &PathBuf) -> Child {
+    let git_dir = dir.join(".git");
     let pack_upload = Command::new("git-upload-pack")
         .arg("--strict")
         .arg(git_dir)
