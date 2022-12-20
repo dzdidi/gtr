@@ -1,4 +1,4 @@
 /target
 /src/*.example.*
 .gtr
-.pack
+*.pack
