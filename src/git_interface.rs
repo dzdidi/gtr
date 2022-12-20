@@ -1,16 +1,17 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{BufReader, Read, ErrorKind, Write};
-use std::process::{Command, Child, Stdio, ChildStdin, ChildStdout};
+use tokio::io::{BufReader, AsyncReadExt, ErrorKind, AsyncWriteExt};
+use tokio::process::{Command, Child, ChildStdin, ChildStdout};
+use std::process::Stdio;
 use std::str;
-use std::fs::{File, OpenOptions};
+use tokio::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use regex::Regex;
 
 static SETTINGS_DIR: &str = ".gtr";
 
 /// Selects only existing branches
-pub fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec<String> {
-    let availalbe: HashSet<String> = ls_remote(dir).into_keys().collect();
+pub async fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec<String> {
+    let availalbe: HashSet<String> = ls_remote(dir).await.into_keys().collect();
     let requested: HashSet<String> = branches
         .iter()
         .map(|s| String::from("refs/heads/") + s)
@@ -19,14 +20,14 @@ pub fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec<Strin
 }
 
 /// Checks if directory is a git repository, adds service folder to gitignore
-pub fn gtr_setup(dir: &str) {
+pub async fn gtr_setup(dir: &str) {
     is_git(dir);
-    ignore_gtr(dir);
+    ignore_gtr(dir).await;
 }
 
 /// Returns hash of Ref for each branch of given repository as well as current HEAD
-pub fn ls_remote(dir: &str) -> HashMap<String, String> {
-    let refs = Command::new("git").arg("ls-remote").arg(dir).output().unwrap();
+pub async fn ls_remote(dir: &str) -> HashMap<String, String> {
+    let refs = Command::new("git").arg("ls-remote").arg(dir).output().await.unwrap();
     let refs = String::from_utf8(refs.stdout).unwrap();
     return refs
         .split("\n")
@@ -41,37 +42,52 @@ pub fn ls_remote(dir: &str) -> HashMap<String, String> {
 
 /// Generates necessary pack files
 // TODO: move to tokio
-pub fn upload_pack(dir: &PathBuf, want: &'static str, have: Option<&'static str>) {
-    let pack_upload = start_pack_upload_process(dir);
+pub async fn upload_pack(dir: &PathBuf, want: &str, have: Option<&str>) {
+    let pack_upload = start_pack_upload_process(dir).await;
 
     let mut stdin = pack_upload.stdin.unwrap();
     let stdout = pack_upload.stdout.unwrap();
     let mut buf = BufReader::new(stdout);
 
-    request_pack_file(&mut buf, &mut stdin, want, have);
-    write_pack_file(dir, want, &mut buf);
+    request_pack_file(&mut buf, &mut stdin, want, have).await;
+    write_pack_file(dir, want, &mut buf).await;
 }
 
+/// Start git-upload-pack server
+async fn start_pack_upload_process(dir: &PathBuf) -> Child {
+    let git_dir = dir.join(".git");
+    let pack_upload = Command::new("git-upload-pack")
+        .arg("--strict")
+        .arg(git_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to initialize git pack upload");
+
+    return pack_upload
+}
+
+
 /// Store pack file to fs
-fn write_pack_file(dir: &PathBuf, want:  &'static str, buf: &mut BufReader<ChildStdout>) {
+async fn write_pack_file(dir: &PathBuf, want:  &str, buf: &mut BufReader<ChildStdout>) {
     let mut pack_content = Vec::new();
-    match buf.read_to_end(&mut pack_content) {
+    match buf.read_to_end(&mut pack_content).await {
         Err(e) => println!("Error reading pack file content: {:?}", e),
         Ok(_) => {
-            let file_path = dir.join("..").join(format!("{want}.pack"));
-            let mut file = File::create(file_path).unwrap();
-            file.write_all(&pack_content).unwrap();
+            let file_path = dir.join(format!("{want}.pack"));
+            let mut file = File::create(file_path).await.unwrap();
+            file.write_all(&pack_content).await.unwrap();
         }
     };
 }
 
 /// Talk to git-upload-pack until it is ready to send pack files
 // NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
-fn request_pack_file(
+async fn request_pack_file(
     buf: &mut BufReader<ChildStdout>,
     stdin: &mut ChildStdin,
-    want: &'static str,
-    have: Option<&'static str>)
+    want: &str,
+    have: Option<&str>)
 {
     let mut expect_nack = false;
     loop {
@@ -79,7 +95,7 @@ fn request_pack_file(
         // (0000) ends with new line
         // parsing should be similar to the one in lightning messages
         let mut msg_buf = [0; 65535]; // FFFF
-        match buf.read(&mut msg_buf) {
+        match buf.read(&mut msg_buf).await {
             Err(e) => println!("Error requesting pack file: {:?}", e),
             Ok(_) => {
                 let line = read_line(String::from_utf8(msg_buf.to_vec()).unwrap());
@@ -89,7 +105,7 @@ fn request_pack_file(
                 if !(expect_nack || end_of_list) { continue; }
 
                 if end_of_list {
-                    write_message(want, have, stdin);
+                    write_message(want, have, stdin).await;
                     expect_nack = true;
                     continue;
                 }
@@ -101,20 +117,6 @@ fn request_pack_file(
             }
         };
     }
-}
-
-/// Start git-upload-pack server
-fn start_pack_upload_process(dir: &PathBuf) -> Child {
-    let git_dir = dir.join(".git");
-    let pack_upload = Command::new("git-upload-pack")
-        .arg("--strict")
-        .arg(git_dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to initialize git pack upload");
-
-    return pack_upload
 }
 
 /// Identify git pack server nack response
@@ -141,57 +143,55 @@ fn read_line(line: String) -> String {
 }
 
 /// Complete message sent to server for packfile negotiation
-fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
-    write_pack_line(&format!("want {}", want), stdin);
-    write_pack_line("", stdin);
+async fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
+    write_pack_line(&format!("want {}", want), stdin).await;
+    write_pack_line("", stdin).await;
     match have {
         Some(have) => {
-            write_pack_line(&format!("have {}", have), stdin);
-            write_pack_line("", stdin);
+            write_pack_line(&format!("have {}", have), stdin).await;
+            write_pack_line("", stdin).await;
         },
         None => {}
     }
-    write_pack_line("done", stdin);
+    write_pack_line("done", stdin).await;
 }
 
 /// Write line to stdin for git pack communication
-fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
+async fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
     if "".eq(line) {
-        stdin.write_all(String::from("0000").as_bytes()).unwrap()
+        stdin.write_all(String::from("0000").as_bytes()).await.unwrap()
     } else {
         let message = format!("{0:04x}{1}\n", line.as_bytes().len() + 4 + 1, line);
-        stdin.write_all(message.as_bytes()).unwrap();
+        stdin.write_all(message.as_bytes()).await.unwrap();
     }
 }
 
 /// Add .gtr directory to gitignore in provided repository
-fn ignore_gtr(dir: &str) {
+async fn ignore_gtr(dir: &str) {
     let gitignore_path = Path::new(dir).join(".gitignore");
-    match File::open(&gitignore_path) {
+    match File::open(&gitignore_path).await {
         Ok(mut file) => {
             let mut data = String::new();
-            file.read_to_string(&mut data).expect("Can not read file content");
+            file.read_to_string(&mut data).await.expect("Can not read file content");
 
             let gtr_ignored = data.split("\n").into_iter().any(|s| String::from(SETTINGS_DIR).eq(s));
-            if !gtr_ignored { store_in_gitignore(&gitignore_path); }
+            if !gtr_ignored { store_in_gitignore(&gitignore_path).await; }
         },
         Err(e) => match e.kind() {
-            ErrorKind::NotFound => store_in_gitignore(&gitignore_path),
+            ErrorKind::NotFound => store_in_gitignore(&gitignore_path).await,
             _ => panic!("Unrecognized error {e}")
         }
     }
 }
 
 /// Add gtr related files to gitignore
-fn store_in_gitignore(gitignore_path: &PathBuf) {
-    let store = |mut file: File| { file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).unwrap() };
-
-    match OpenOptions::new().write(true).append(true).open(gitignore_path) {
-        Ok(file) => store(file),
+async fn store_in_gitignore(gitignore_path: &PathBuf) {
+    match OpenOptions::new().write(true).append(true).open(gitignore_path).await {
+        Ok(mut file) => file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap(),
         Err(_) => {
-            let file = File::create(&gitignore_path).unwrap();
-            OpenOptions::new().write(true).append(true).open(gitignore_path).unwrap();
-            store(file);
+            let mut file = File::create(&gitignore_path).await.unwrap();
+            OpenOptions::new().write(true).append(true).open(gitignore_path).await.unwrap();
+            file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap();
         }
     }
 }
@@ -201,4 +201,3 @@ fn is_git(dir: &str) {
         panic!("Not a git repository");
     }
 }
-

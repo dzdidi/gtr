@@ -61,10 +61,11 @@ async fn main() {
             remove(sub_matches.get_one("path").unwrap(), &branches).await;
         }
         Some(("pack", sub_matches)) => {
-            let want = "447990420af9fe891cfe7880d04d9769e4168f7a";
-            let have = Some("cced046c2b0435ff258de91580720427316f07ae");
+            let want = "cfcd4d985e243d86134fdc902cf454fc4163100e";
+            //let have = Some("da13823f7206ed470cdab7c98285cd706ae1dcbe");
+            let have = None;
             let dir = sub_matches.get_one("path").unwrap();
-            upload_pack(dir, want, have)
+            upload_pack(dir, want, have).await;
         }
         _ => unreachable!(), // If all subcommands are defined above, anything else is unreachabe!()
     }
