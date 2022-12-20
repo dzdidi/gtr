@@ -61,9 +61,9 @@ async fn main() {
             remove(sub_matches.get_one("path").unwrap(), &branches).await;
         }
         Some(("pack", sub_matches)) => {
-            let want = "cfcd4d985e243d86134fdc902cf454fc4163100e";
-            //let have = Some("da13823f7206ed470cdab7c98285cd706ae1dcbe");
-            let have = None;
+            let want = "66ef7ea67c18d2341afb8c1521afbab31014e62f"; // refs/heads/test/want
+            let have = Some("da13823f7206ed470cdab7c98285cd706ae1dcbe"); // refs/heads/test/have
+
             let dir = sub_matches.get_one("path").unwrap();
             upload_pack(dir, want, have).await;
         }

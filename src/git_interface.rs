@@ -47,8 +47,8 @@ pub async fn upload_pack(dir: &PathBuf, want: &str, have: Option<&str>) {
 
     let mut stdin = pack_upload.stdin.unwrap();
     let stdout = pack_upload.stdout.unwrap();
-    let mut buf = BufReader::new(stdout);
 
+    let mut buf = BufReader::new(stdout);
     request_pack_file(&mut buf, &mut stdin, want, have).await;
     write_pack_file(dir, want, &mut buf).await;
 }
