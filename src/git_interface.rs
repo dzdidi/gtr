@@ -83,6 +83,7 @@ async fn write_pack_file(dir: &PathBuf, want:  &str, buf: &mut BufReader<ChildSt
 
 /// Talk to git-upload-pack until it is ready to send pack files
 // NOTE: https://github.com/git/git/blob/b594c975c7e865be23477989d7f36157ad437dc7/Documentation/technical/pack-protocol.txt#L346-L393
+// NOTE: this is worth reading: https://github.com/git/git/blob/ebba6c0ca617352ceef5caa636ab243f0ef14cc3/Documentation/technical/pack-heuristics.txt
 async fn request_pack_file(
     buf: &mut BufReader<ChildStdout>,
     stdin: &mut ChildStdin,
