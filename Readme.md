@@ -6,7 +6,9 @@ This is am attempt to decentralize the service you are reading this at.
 - https://scuttlebot.io/apis/community/git-ssb.html (uses scuttelbut for communication and commits things like PRs, etc to repo itself)
 - https://radicle.xyz/ - (Involved into shitcoinery)
 
-Use torrent/dht as a transport layer for git. Here is the implementation https://github.com/cjb/GitTorrent which I am taking as an inspiration. The particular implementation consists of the following parts:
+Use torrent/dht as a transport layer for git. Here is the implementation https://github.com/cjb/GitTorrent which I am taking as an inspiration.
+NOTE: While torrent has privacy issues with peers downloading data directly from each other, which means that seeders know who exactly downloads data it is worth to consider alternative solutions like GNUnet. This requires further investigation. For the sake of simplicity, while decision on technology/protocol is not made it, future reference to torrent are as to abstract p2p data transfer protocol.
+The particular implementation consists of the following parts:
   - `gti` - a CLI tool;
   - `gtd` - a daemon. It creates server (one for each local repo?) which handles requests routed by dht to send necessary pack files;
   - `git-remote-gtr` - a transport that handles communication with dht accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
