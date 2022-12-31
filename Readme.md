@@ -32,7 +32,6 @@ To clone a branch use a command `git clone gtr://<hex sha1>/reponame` - where `s
 
 Alternatively it might make sense to forward all commands straight to git intercepting few of them, executing necessary logic and passing them further.
 
-
 ## User flow
 XXX: note that there is no "repository" as such. Each branch gets announced. The `HEAD`/`master` branches are announced by default and each new branch gets added separately.
 
@@ -47,3 +46,18 @@ XXX: note that there is no "repository" as such. Each branch gets announced. The
 
 ### Server mode (`gtd`)
 - no `push` but `announce`/`put` branch to DHT instead
+
+# TODO: features configurable at build
+
+Pluggable git transports with:
+- [ ] torrent
+- [ ] holepunch (hyperswarn)
+- [ ] scuttlebutt
+- [ ] GNUnet
+
+Pluggable application level communication
+- [ ] torrent
+- [ ] holepunch (hypercore / hyperbee)
+- [ ] scuttlebutt
+- [ ] GNUnet
+- [ ] nostr
