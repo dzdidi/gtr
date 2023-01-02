@@ -11,7 +11,10 @@ NOTE: While torrent has privacy issues with peers downloading data directly from
 The particular implementation consists of the following parts:
   - `gti` - a CLI tool;
   - `gtd` - a daemon. It creates server (one for each local repo?) which handles requests routed by dht to send necessary pack files;
-  - `git-remote-gtr` - a transport that handles communication with dht accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-torrent` - a transport that handles communication with dht accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-holepunch` - a transport that handles communication with holepunch accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-ssb` - a transport that handles communication with scuttlebutt accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-gnunet` - a transport that handles communication with gnunet accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
   - `git-interface`:
     - generates pack files (either upon request from `gtd` or upon each new commit by git)
     - lists available branches and their corresponding references
@@ -28,7 +31,7 @@ Use some decentralized messaging protocols for implementation of things like PRs
 # UX
 The goal is to keep UX as close to plain git is possible. There is one nuance however. This might require a trade off where there will be one DHT server instance running per each repo.
 
-To clone a branch use a command `git clone gtr://<hex sha1>/reponame` - where `sha1` - is a sha1 of mutable key on DHT. This can be converted to `git clone gtr://<user>/reponame` with `sha1` being mapped to `username` on decentralized messaging protocol like nostr or slashtags
+To clone a branch use a command `git clone torrent://<hex sha1>/reponame` - where `sha1` - is a sha1 of mutable key on DHT. This can be converted to `git clone torrent://<user>/reponame` with `sha1` being mapped to `username` on decentralized messaging protocol like nostr or slashtags
 
 Alternatively it might make sense to forward all commands straight to git intercepting few of them, executing necessary logic and passing them further.
 
@@ -40,7 +43,7 @@ XXX: note that there is no "repository" as such. Each branch gets announced. The
   - `announce` - the source is hosted on the local machine while is available via torrent (e.g. key is pushed to DHT with value staying locally). This will require a server listening locally for connection requests, this will allow counterparties to lookup necessary branch/repo on DHT with consequent connection to local server for downloading;
   - `put` - the source is stored on DHT (e.g. both key and value stored in distributed manner over the network).
 
-### Client mode (`git-remote-gtr`)
+### Client mode (`git-remote-(torrent/holepunch/ssb/gnunet)`)
 - no `git push` but `announce`/`put` branch to DHT instead
 - no `git pull` but `get` branch from DHT instead
 
