@@ -15,13 +15,13 @@ clap = { version = "4.0", features = ["cargo"] }
 # TODO: check what exactly is needed
 tokio = { version = "1", features = ["full"] }
 
-# TODO: feature flags for different transports
-# torrent
+# bittorrent dht infrastructure dependencies
+bip_dht = { version = "0.6.0", optional = true }
+bip_handshake = { version = "0.7.1", optional = true }
+bip_util = { version = "0.5.0", optional = true }
+
+[features]
+torrent = ["dep:bip_dht", "dep:bip_handshake", "dep:bip_util"]
 # holepunch
 # scuttlebutt
 # gnunet
-#
-# bittorrent dht infrastructure dependencies
-bip_dht = "0.6.0"
-bip_handshake = "0.7.1"
-bip_util = "0.5.0"
