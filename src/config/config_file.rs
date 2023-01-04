@@ -54,7 +54,7 @@ pub async fn read_or_create(dir: &PathBuf) -> Config {
                     };
                     return default_config
                 },
-                _ => panic!("Unrecognized error {e}")
+                _ => { panic!("Unrecognized error {e}") }
             }
         }
     };
