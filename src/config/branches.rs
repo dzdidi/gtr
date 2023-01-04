@@ -57,7 +57,7 @@ async fn write_new_branches(dir: &PathBuf, branches: &Vec<&String>) {
     let mut conf = crate::config::config_file::read_or_create(dir).await;
     conf.branches = sorted.iter().map(|b| String::from(*b)).collect();
 
-    conf.store(dir).await
+    conf.save(dir).await
 }
 
 #[cfg(test)]
@@ -67,7 +67,7 @@ mod tests {
     #[tokio::test]
     async fn adds_and_removes_branches_in_settings() {
         let mut dir = PathBuf::new();
-        dir.push(".");
+        dir.push("./.test");
 
         let mut branches: Vec<String> = vec!["testA", "testB"]
             .iter()

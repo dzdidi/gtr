@@ -2,3 +2,4 @@
 /src/*.example.*
 .gtr
 *.pack
+/.test
