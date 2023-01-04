@@ -1,6 +1,6 @@
 // use std::env;
 use gtr::git_interface::upload_pack;
-use gtr::config::{include, remove, list};
+use gtr::config::branches::{include, remove, list};
 use gtr::gti::cli;
 
 // XXX UX:
