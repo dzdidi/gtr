@@ -4,8 +4,8 @@ use tokio::fs::{File, create_dir_all};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
 
 // manage content of `dir/.gtr/gtrd-export
-static SETTINGS_DIR: &str = ".gtr";
-static SETTINGS_FILE: &str = "gtrd-export";
+static CONFIG_DIR: &str = ".gtr";
+static CONFIG_FILE: &str = "config.toml";
 
 /// Add branches to be shared via gtrd
 ///
@@ -52,8 +52,8 @@ pub async fn list(dir: &PathBuf) -> Vec<String>{
 // WINDOWS: task scheduler
 
 async fn read_old_branches(dir: &PathBuf) -> Vec<String> {
-    let settings_dir = dir.join(SETTINGS_DIR);
-    let settings_path = settings_dir.join(SETTINGS_FILE);
+    let config_dir = dir.join(CONFIG_DIR);
+    let settings_path = config_dir.join(CONFIG_FILE);
 
     match tokio::fs::File::open(&settings_path).await {
         Ok(mut file) => {
@@ -68,7 +68,7 @@ async fn read_old_branches(dir: &PathBuf) -> Vec<String> {
         Err(e) => {
             match e.kind() {
                 ErrorKind::NotFound => {
-                    create_dir_all(&settings_dir).await.expect("Can not create gtr directory");
+                    create_dir_all(&config_dir).await.expect("Can not create gtr directory");
                     File::create(&settings_path).await.expect("Can not create settings file");
                     return vec!(String::from(""))
                 },
@@ -83,7 +83,7 @@ async fn write_new_branches(dir: &PathBuf, branches: &Vec<&String>) {
     sorted.sort();
     let stred: Vec<&str> = sorted.iter().map(|b| b.as_str()).collect();
 
-    let settings_path = dir.join(SETTINGS_DIR).join(SETTINGS_FILE);
+    let settings_path = dir.join(CONFIG_DIR).join(CONFIG_FILE);
     match File::create(&settings_path).await {
         Ok(mut file) => file.write_all(stred.join("\n").as_bytes()).await.unwrap(),
         Err(e) => panic!("Cant store settings to file {e}")
