@@ -1,19 +1,5 @@
 use std::path::PathBuf;
 use std::collections::HashSet;
-use tokio::fs::{File, create_dir_all};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
-use toml;
-use serde::{Serialize, Deserialize};
-
-// manage content of `dir/.gtr/gtrd-export
-static CONFIG_DIR: &str = ".gtr";
-static CONFIG_FILE: &str = "config.toml";
-
-// TODO: move out
-#[derive(Serialize, Deserialize, Debug)]
-struct Config {
-    branches: Vec<String>,
-}
 
 /// Add branches to be shared via gtrd
 ///
@@ -60,51 +46,18 @@ pub async fn list(dir: &PathBuf) -> Vec<String>{
 // WINDOWS: task scheduler
 
 async fn read_branches(dir: &PathBuf) -> Vec<String> {
-    let config_dir = dir.join(CONFIG_DIR);
-    let settings_path = config_dir.join(CONFIG_FILE);
-
-    match tokio::fs::File::open(&settings_path).await {
-        Ok(mut file) => {
-            let mut data = String::new();
-            file.read_to_string(&mut data).await.expect("Can not read file content");
-            let default_config = Config {
-                branches: vec![String::from("master")]
-            };
-            let parsed: Config = toml::from_str(&data).unwrap_or(default_config);
-            return parsed.branches;
-        },
-        Err(e) => {
-            match e.kind() {
-                ErrorKind::NotFound => {
-                    create_dir_all(&config_dir).await.expect("Can not create gtr directory");
-                    File::create(&settings_path).await.expect("Can not create settings file");
-                    return vec!(String::from(""))
-                },
-                _ => panic!("Unrecognized error {e}")
-            }
-        }
-    };
+    let conf = crate::config::config_file::read_or_create(dir).await;
+    return conf.branches
 }
 
 async fn write_new_branches(dir: &PathBuf, branches: &Vec<&String>) {
     let mut sorted = branches.to_vec();
     sorted.sort();
-    let branches: Vec<String> = sorted.iter().map(|b| String::from(*b)).collect();
 
-    let settings_path = dir.join(CONFIG_DIR).join(CONFIG_FILE);
+    let mut conf = crate::config::config_file::read_or_create(dir).await;
+    conf.branches = sorted.iter().map(|b| String::from(*b)).collect();
 
-    // FIXME: prevent content overwrite
-
-    match File::create(&settings_path).await {
-        Err(e) => panic!("Cant store settings to file {e}"),
-        Ok(mut file) => {
-            let config = Config {
-                branches
-            };
-            let content = toml::to_string(&config).unwrap();
-            file.write_all(content.as_bytes()).await.unwrap();
-        }
-    }
+    conf.store(dir).await
 }
 
 #[cfg(test)]
