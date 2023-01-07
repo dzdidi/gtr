@@ -1,3 +1,5 @@
+// TODO: implement transport trait so that different transports can get consistently injected
+//
 // use std::collections::HashSet;
 // use std::net::{SocketAddr, Ipv4Addr, SocketAddrV4};
 // use std::thread;
