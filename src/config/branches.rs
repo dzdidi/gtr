@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::collections::HashSet;
+use crate::config::config_file;
 
 /// Add branches to be shared via gtrd
 ///
@@ -46,7 +47,7 @@ pub async fn list(dir: &PathBuf) -> Vec<String>{
 // WINDOWS: task scheduler
 
 async fn read_branches(dir: &PathBuf) -> Vec<String> {
-    let conf = crate::config::config_file::read_or_create(dir).await;
+    let conf = config_file::read_or_create(dir).await;
     return conf.branches
 }
 
@@ -54,7 +55,7 @@ async fn write_new_branches(dir: &PathBuf, branches: &Vec<&String>) {
     let mut sorted = branches.to_vec();
     sorted.sort();
 
-    let mut conf = crate::config::config_file::read_or_create(dir).await;
+    let mut conf = config_file::read_or_create(dir).await;
     conf.branches = sorted.iter().map(|b| String::from(*b)).collect();
 
     conf.save(dir).await
