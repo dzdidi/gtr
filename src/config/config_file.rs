@@ -11,17 +11,34 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub branches: Vec<String>,
+    pub transport: Transport,
 }
-const DEFAULT_CONFIG: Config = Config {
-    branches: vec![]
-};
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Transport {
+    pub torrent: Option<Torrent>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Torrent {
+    pub router: AddressPort,
+    pub bind: AddressPort,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AddressPort {
+    pub addr: String,
+    pub port: u16,
+}
+
+const DEFAULT_CONFIG: Config = Config {
+    branches: vec![],
+    transport: Transport { torrent: None }
+};
 
 impl Config {
     pub async fn save(&self, dir: &PathBuf) {
-        // TODO: move out?
-        let config_dir = dir.join(CONFIG_DIR);
-        let settings_path = config_dir.join(CONFIG_FILE);
+        let (_, settings_path) = get_config_path_dir_and_file(dir);
 
         match File::create(&settings_path).await {
             Err(e) => panic!("Cant save config to file {e}"),
@@ -33,9 +50,7 @@ impl Config {
     }
 }
 pub async fn read_or_create(dir: &PathBuf) -> Config {
-    // TODO: move out?
-    let config_dir = dir.join(CONFIG_DIR);
-    let settings_path = config_dir.join(CONFIG_FILE);
+    let (config_dir, settings_path) = get_config_path_dir_and_file(dir);
     match tokio::fs::File::open(&settings_path).await {
         Ok(mut file) => {
             let mut data = String::new();
@@ -55,4 +70,11 @@ pub async fn read_or_create(dir: &PathBuf) -> Config {
             }
         }
     };
+}
+
+fn get_config_path_dir_and_file(dir: &PathBuf) -> (PathBuf, PathBuf) {
+    let config_dir = dir.join(CONFIG_DIR);
+    let settings_path = config_dir.join(CONFIG_FILE);
+
+    return (config_dir, settings_path)
 }
