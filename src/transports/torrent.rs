@@ -1,3 +1,98 @@
+// #[cfg(feature = "torrent")]
+use std::thread;
+use std::io::{self, Read};
+
+use tokio::runtime::Runtime;
+
+use std::net:: SocketAddr;
+use std::path::PathBuf;
+
+use bip_dht::{MainlineDht, DhtBuilder};
+use bip_util::bt::InfoHash;
+use bip_handshake::{HandshakerBuilder, InitiateMessage, Protocol};
+use bip_handshake::transports::TcpTransport;
+
+use crate::config::config_file;
+
+pub async fn get_dht(dir: &PathBuf) {
+    let torrent_config  = get_torrent_config(dir).await;
+    let handshaker = get_handshaker(&torrent_config).await;
+    let dht = start_dht(&torrent_config, &handshaker);
+
+    // Spawn a thread to listen to and report events
+    let events = dht.events();
+    thread::spawn(move || {
+        // TODO: handle events
+        for event in events {
+            println!("\nReceived Dht Event {:?}", event);
+        }
+    });
+
+    let hash = InfoHash::from_bytes(b"My Unique Info Hash");
+    // Let the user announce or search on our info hash
+    let stdin = io::stdin();
+    let stdin_lock = stdin.lock();
+    for byte in stdin_lock.bytes() {
+        match &[byte.unwrap()] {
+            b"a" => dht.search(hash.into(), true),
+            b"s" => dht.search(hash.into(), false),
+            _   => ()
+        }
+    }
+}
+
+struct TorrentConfig {
+    pub bootstrap_address: SocketAddr,
+    pub bind_address: SocketAddr,
+    pub source: SocketAddr,
+}
+
+async fn get_torrent_config(dir: &PathBuf) -> TorrentConfig {
+    let config = config_file::read_or_create(dir).await;
+    let torrent_config = match config.transport.torrent {
+        None => panic!("Torrent in not configured"),
+        Some(torrent) => torrent
+    };
+
+    return TorrentConfig {
+        bootstrap_address: SocketAddr::new(torrent_config.router.addr.parse().unwrap(), torrent_config.router.port),
+        bind_address: SocketAddr::new(torrent_config.bind.addr.parse().unwrap(), torrent_config.bind.port),
+        source: SocketAddr::new(torrent_config.bind.addr.parse().unwrap(), torrent_config.bind.port),
+    }
+}
+
+async fn get_handshaker(torrent_config: &TorrentConfig) -> HandshakerBuilder {
+    // TODO: from config?
+    let u_torrent_peer_id = (*b"-UT2060-000000000000").into();
+
+    // TODO: hash generation (this is probably immutable hash)
+    let hash = InfoHash::from_bytes(b"My Unique Info Hash");
+
+    // FIXME: add some async io handler
+    let rt  = Runtime::new().unwrap();
+    let handshaker = HandshakerBuilder::new()
+        .with_peer_id(u_torrent_peer_id)
+        .build(TcpTransport, rt.handle())
+        .unwrap()
+        .send(InitiateMessage::new(
+                Protocol::BitTorrent,
+                hash,
+                torrent_config.bootstrap_address,
+            )
+        )
+        .await
+        .unwrap();
+
+    return handshaker
+}
+
+fn start_dht(torrent_config: &TorrentConfig, handshaker: &HandshakerBuilder) -> MainlineDht {
+    DhtBuilder::with_node(torrent_config.bootstrap_address)
+        .set_source_addr(torrent_config.source)
+        .set_read_only(false)
+        .start_mainline(handshaker)
+        .unwrap()
+}
 // TODO: implement transport trait so that different transports can get consistently injected
 //
 // TODO:
@@ -52,73 +147,3 @@
 //      when pack is created store it as <sha>.pack file
 //      create dht with disabled tracking
 //      seed pack file to dht by sending torrent
-use std::collections::HashSet;
-use std::net::{SocketAddr, Ipv4Addr, SocketAddrV4};
-use std::thread;
-use std::io::{self, Read};
-
-use bip_dht::{DhtBuilder, Router};
-use bip_handshake::Handshaker;
-use bip_util::bt::{InfoHash, PeerId};
-use bip_handshake::{HandshakerBuilder, InitiateMessage, Protocol};
-use bip_handshake::transports::TcpTransport;
-
-use crate::config::config_file;
-
-pub fn start_dht(dir: &PathBuf) {
-    // TODO: hash generation (this is probably immutable hash)
-    let hash = InfoHash::from_bytes(b"My Unique Info Hash");
-
-    let TorrentConfig { bootstrap_address, bind_address, source } = getTorrentConfig(dir);
-
-    // TODO: use more sophisticated handshaker, see example from bip_handshake
-    // let handshaker = SimpleHandshaker{ filter: HashSet::new(), count: 0 };
-    let peer_id = (*b"-UT2060-000000000000").into(); // bootstrap peer_id???
-    let handshaker = HandshakerBuilder::new();
-
-    let dht = DhtBuilder::with_node(bootstrap_address)
-        .set_source_addr(source)
-        .set_read_only(false)
-        .start_mainline(handshaker)
-        .unwrap();
-
-    // Spawn a thread to listen to and report events
-    let events = dht.events();
-    thread::spawn(move || {
-        // TODO: handle events
-        for event in events {
-            println!("\nReceived Dht Event {:?}", event);
-        }
-    });
-    
-    // Let the user announce or search on our info hash
-    let stdin = io::stdin();
-    let stdin_lock = stdin.lock();
-    for byte in stdin_lock.bytes() {
-        match &[byte.unwrap()] {
-            b"a" => dht.search(hash.into(), true),
-            b"s" => dht.search(hash.into(), false),
-            _   => ()
-        }
-    }
-}
-
-struct TorrentConfig {
-    pub bootstrap_address: SocketAddrV4,
-    pub bind_address: SocketAddrV4,
-    pub source: SocketAddrV4,
-}
-
-fn getTorrentConfig(dir: &PathBuf) -> TorrentConfig {
-    let config = config_file::read_or_create(dir).await;
-    let torrent_config = match config.transport.torrent {
-        None => panic("Torrent in not configured"),
-        Some(torrent) => torrent
-    };
-
-    return TorrentConfig {
-        bootstrap_address = SocketAddrV4::new(Ipv4Addr::new(torrent.router.addr), torrent.router.port),
-        bind_address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(torrent.bind.addr), torrent.bind.port)),
-        source = SocketAddr::V4(bind_address),
-    }
-}
