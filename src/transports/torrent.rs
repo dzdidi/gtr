@@ -66,37 +66,17 @@ use bip_handshake::transports::TcpTransport;
 use crate::config::config_file;
 
 pub fn start_dht(dir: &PathBuf) {
-    // TODO: hash generation (this is probably immutable hash
+    // TODO: hash generation (this is probably immutable hash)
     let hash = InfoHash::from_bytes(b"My Unique Info Hash");
 
-    let config = config_file::read_or_create(dir).await;
-    // TODO: move out
-    let router = match config.transport.torrent {
-        None => panic("Torrent in not configured"),
-        Some(torrent) => SocketAddr::V4(
-            SocketAddrV4::new(
-                Ipv4Addr::new(torrent.router.addr),
-                torrent.router.port
-                )
-            )
-    };
-    let bind_address = match config.transport.torrent {
-        None => panic("Torrent in not configured"),
-        Some(torrent) => SocketAddr::V4(
-            SocketAddrV4::new(
-                Ipv4Addr::new(torrent.bind.addr),
-                torrent.bind.port
-                )
-            )
-    };
-    let source = SocketAddr::V4(bind_address);
+    let TorrentConfig { bootstrap_address, bind_address, source } = getTorrentConfig(dir);
 
     // TODO: use more sophisticated handshaker, see example from bip_handshake
-    //let handshaker = SimpleHandshaker{ filter: HashSet::new(), count: 0 };
+    // let handshaker = SimpleHandshaker{ filter: HashSet::new(), count: 0 };
     let peer_id = (*b"-UT2060-000000000000").into(); // bootstrap peer_id???
     let handshaker = HandshakerBuilder::new();
 
-    let dht = DhtBuilder::with_node(router)
+    let dht = DhtBuilder::with_node(bootstrap_address)
         .set_source_addr(source)
         .set_read_only(false)
         .start_mainline(handshaker)
@@ -120,5 +100,25 @@ pub fn start_dht(dir: &PathBuf) {
             b"s" => dht.search(hash.into(), false),
             _   => ()
         }
+    }
+}
+
+struct TorrentConfig {
+    pub bootstrap_address: SocketAddrV4,
+    pub bind_address: SocketAddrV4,
+    pub source: SocketAddrV4,
+}
+
+fn getTorrentConfig(dir: &PathBuf) -> TorrentConfig {
+    let config = config_file::read_or_create(dir).await;
+    let torrent_config = match config.transport.torrent {
+        None => panic("Torrent in not configured"),
+        Some(torrent) => torrent
+    };
+
+    return TorrentConfig {
+        bootstrap_address = SocketAddrV4::new(Ipv4Addr::new(torrent.router.addr), torrent.router.port),
+        bind_address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(torrent.bind.addr), torrent.bind.port)),
+        source = SocketAddr::V4(bind_address),
     }
 }
