@@ -1,6 +1,8 @@
 // use std::env;
 use gtr::git_interface::upload_pack;
 use gtr::config::branches::{include, remove, list};
+// TODO: use a feature and inject in a different place
+use gtr::transports::torrent::get_dht;
 use gtr::gti::cli;
 
 // XXX UX:

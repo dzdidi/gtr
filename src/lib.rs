@@ -1,5 +1,5 @@
 pub mod git_interface;
 pub mod config;
 pub mod gti;
-#[cfg(feature = "torrent")]
-pub mod torrent;
+# TODO: use as a feature #[cfg(feature = "torrent")]
+pub mod transports;
