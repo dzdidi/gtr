@@ -6,11 +6,12 @@ use std::collections::HashSet;
 use std::net:: SocketAddr;
 use std::path::PathBuf;
 
+use tokio::runtime::Runtime;
+
 use bip_dht::{MainlineDht, DhtBuilder, PeerId};
 use bip_util::bt::InfoHash;
-use bip_handshake::{Handshaker, HandshakerBuilder};
-//, InitiateMessage, Protocol};
-//use bip_handshake::transports::TcpTransport;
+use bip_handshake::{Handshaker, HandshakerBuilder, InitiateMessage, Protocol};
+use bip_handshake::transports::TcpTransport;
 
 use crate::config::config_file;
 
@@ -61,35 +62,33 @@ async fn get_torrent_config(dir: &PathBuf) -> TorrentConfig {
     }
 }
 
-async fn get_handshaker(torrent_config: &TorrentConfig) -> Handshaker<SimpleHandshaker> {
+// XXX bip_dht relies on outdated version of a bip_handshaker
+//  in bit_dht Handshaker is a Trait while in bip_handshaker it is a Struct
+async fn get_handshaker(torrent_config: &TorrentConfig) -> Handshaker {
+    // TODO: from config?
+    let u_torrent_peer_id = (*b"-UT2060-000000000000").into();
 
-    let handshaker = SimpleHandshaker{ filter: HashSet::new(), count: 0 };
+    // TODO: hash generation (this is probably immutable hash)
+    let hash = InfoHash::from_bytes(b"My Unique Info Hash");
+
+    // XXX: bit_handshaler relies on deprecated version of tokio and requires explicit
+    // tokio_core::reactor::Handle as a parameter to build, while current version of tokio
+    // provides Handle.
+    let rt = Runtime::new().unwrap();
+    let handshaker = HandshakerBuilder::new()
+        .with_peer_id(u_torrent_peer_id)
+        .build(TcpTransport, *rt.handle())
+        .unwrap()
+        .send(InitiateMessage::new(
+                Protocol::BitTorrent,
+                hash,
+                torrent_config.bootstrap_address,
+            )
+        )
+        .await
+        .unwrap();
 
     return handshaker
-
-//    // TODO: from config?
-//    let u_torrent_peer_id = (*b"-UT2060-000000000000").into();
-//
-//    // TODO: hash generation (this is probably immutable hash)
-//    let hash = InfoHash::from_bytes(b"My Unique Info Hash");
-//
-//    // FIXME: add some async io handler
-//    let rt  = Runtime::new().unwrap();
-//    let handshaker = HandshakerBuilder::new()
-//        .with_peer_id(u_torrent_peer_id)
-//        .build(TcpTransport, rt.handle())
-//        .unwrap()
-//        .send(InitiateMessage::new(
-//                Protocol::BitTorrent,
-//                hash,
-//                torrent_config.bootstrap_address,
-//            )
-//        )
-//        .await
-//        .unwrap();
-//
-//    return handshaker
-//
 }
 
 fn start_dht(torrent_config: &TorrentConfig, handshaker: &HandshakerBuilder) -> MainlineDht {
@@ -100,45 +99,6 @@ fn start_dht(torrent_config: &TorrentConfig, handshaker: &HandshakerBuilder) -> 
         .unwrap()
 }
 
-struct SimpleHandshaker {
-    filter: HashSet<SocketAddr>,
-    count: usize
-}
-
-//impl Handshaker for SimpleHandshaker {
-impl Handshaker for SimpleHandshaker {
-    /// Type of stream used to receive connections from.
-    type MetadataEnvelope = ();
-
-    /// Unique peer id used to identify ourselves to other peers.
-    fn id(&self) -> PeerId {
-        [0u8; 20].into()
-    }
-
-    /// Advertise port that is being listened on by the handshaker.
-    ///
-    /// It is important that this is the external port that the peer will be sending data
-    /// to. This is relevant if the client employs nat traversal via upnp or other means.
-    fn port(&self) -> u16 {
-        6889
-    }
-
-    /// Initiates a handshake with the given socket address.
-    fn connect(&mut self, _: Option<PeerId>, _: InfoHash, addr: SocketAddr) {
-        if self.filter.contains(&addr) {
-            return
-        }
-
-        self.filter.insert(addr);
-        self.count += 1;
-        println!("Received new peer {:?}, total unique peers {}", addr, self.count);
-    }
-
-    /// Send the given Metadata back to the client.
-    fn metadata(&mut self, _: Self::MetadataEnvelope) {
-        ()
-    }
-}
 // TODO: implement transport trait so that different transports can get consistently injected
 //
 // TODO:
