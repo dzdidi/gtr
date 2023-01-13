@@ -111,10 +111,8 @@ async fn request_pack_file(
                     continue;
                 }
 
-                match have {
-                    Some(_) => ack_objects_continue(&line) && return,
-                    None => wait_for_nak(&line) && return,
-                };
+                if let Some(_) = have { ack_objects_continue(&line); } else { wait_for_nak(&line); }
+                return
             }
         };
     }
@@ -147,12 +145,9 @@ fn read_line(line: String) -> String {
 async fn write_message(want: &str, have: Option<&str>, stdin: &mut ChildStdin) {
     write_pack_line(&format!("want {}", want), stdin).await;
     write_pack_line("", stdin).await;
-    match have {
-        Some(have) => {
-            write_pack_line(&format!("have {}", have), stdin).await;
-            write_pack_line("", stdin).await;
-        },
-        None => {}
+    if let Some(have) = have {
+        write_pack_line(&format!("have {}", have), stdin).await;
+        write_pack_line("", stdin).await;
     }
     write_pack_line("done", stdin).await;
 }
