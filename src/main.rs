@@ -1,5 +1,5 @@
 // use std::env;
-use gtr::git_interface::upload_pack;
+use gtr::git_interface::{gtr_setup, upload_pack};
 use gtr::config::branches::{include, remove, list};
 use gtr::gti::cli;
 
@@ -65,7 +65,11 @@ async fn main() {
             let have = Some("da13823f7206ed470cdab7c98285cd706ae1dcbe"); // refs/heads/test/have
 
             let dir = sub_matches.get_one("path").unwrap();
-            upload_pack(dir, want, have).await;
+            upload_pack(dir, want, have).await.unwrap();
+        }
+        Some(("setup", sub_matches)) => {
+            let dir = sub_matches.get_one("path").unwrap();
+            gtr_setup(dir).await.unwrap();
         }
         _ => unreachable!(), // If all subcommands are defined above, anything else is unreachabe!()
     }

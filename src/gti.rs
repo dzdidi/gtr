@@ -41,6 +41,12 @@ pub fn cli() -> Command {
         .arg(arg!(have: [HAVE]))
         .arg(&path_arg);
 
+    let _setup = Command::new("setup")
+        .about("ONLY FOR TESTING setup gtr")
+        .arg(arg!(want: [WANT]))
+        .arg(arg!(have: [HAVE]))
+        .arg(&path_arg);
+
     command!()
         .subcommand_required(true) // can't just run gtr?
         .arg_required_else_help(true)
@@ -50,4 +56,5 @@ pub fn cli() -> Command {
         .subcommand(list)
         .subcommand(remove)
         .subcommand(_pack)
+        .subcommand(_setup)
 }
