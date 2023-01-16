@@ -21,7 +21,7 @@ pub async fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec
 
 /// Checks if directory is a git repository, adds service folder to gitignore
 pub async fn gtr_setup(dir: &str) {
-    is_git(dir);
+    if !is_git(dir) { panic!("Not a git repository") };
     ignore_gtr(dir).await;
 }
 
@@ -111,8 +111,7 @@ async fn request_pack_file(
                     continue;
                 }
 
-                if let Some(_) = have { ack_objects_continue(&line); } else { wait_for_nak(&line); }
-                return
+                if let Some(_) = have { ack_objects_continue(&line); } else { wait_for_nak(&line); };
             }
         };
     }
@@ -184,16 +183,17 @@ async fn ignore_gtr(dir: &str) {
 async fn store_in_gitignore(gitignore_path: &PathBuf) {
     match OpenOptions::new().write(true).append(true).open(gitignore_path).await {
         Ok(mut file) => file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap(),
-        Err(_) => {
-            let mut file = File::create(&gitignore_path).await.unwrap();
-            OpenOptions::new().write(true).append(true).open(gitignore_path).await.unwrap();
-            file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap();
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => {
+                let mut file = File::create(&gitignore_path).await.unwrap();
+                OpenOptions::new().write(true).append(true).open(gitignore_path).await.unwrap();
+                file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap();
+            },
+            _ => panic!("Unrecognized error {e}")
         }
     }
 }
 /// Panics if provided directory is not a git repository
-fn is_git(dir: &str) {
-    if !Path::new(dir).join(".git").exists() {
-        panic!("Not a git repository");
-    }
+fn is_git(dir: &str) -> bool {
+    Path::new(dir).join(".git").exists()
 }
