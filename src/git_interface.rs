@@ -4,81 +4,91 @@ use tokio::process::{Command, Child, ChildStdin, ChildStdout};
 use std::process::Stdio;
 use std::str;
 use tokio::fs::{File, OpenOptions};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use regex::Regex;
+
+use crate::utils::error::{GtrResult, GitError};
 
 static SETTINGS_DIR: &str = ".gtr";
 
+/// Checks if directory is a git repository, adds service folder to gitignore
+pub async fn gtr_setup(dir: &PathBuf) -> GtrResult<()>{
+    if !is_git(dir) { return Err(GitError::not_git_repo(dir)) };
+
+    ignore_gtr(dir).await?;
+    Ok(())
+}
+
 /// Selects only existing branches
-pub async fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec<String> {
-    let availalbe: HashSet<String> = ls_remote(dir).await.into_keys().collect();
+pub async fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> GtrResult<Vec<String>> {
+    let availalbe: HashSet<String> = ls_remote(dir).await?.into_keys().collect();
     let requested: HashSet<String> = branches
         .iter()
         .map(|s| String::from("refs/heads/") + s)
         .collect();
-    return availalbe.intersection(&requested).into_iter().map(|s| String::from(s)).collect()
-}
-
-/// Checks if directory is a git repository, adds service folder to gitignore
-pub async fn gtr_setup(dir: &str) {
-    is_git(dir);
-    ignore_gtr(dir).await;
+    return Ok(availalbe.intersection(&requested).into_iter().map(|s| String::from(s)).collect());
 }
 
 /// Returns hash of Ref for each branch of given repository as well as current HEAD
-pub async fn ls_remote(dir: &str) -> HashMap<String, String> {
-    let refs = Command::new("git").arg("ls-remote").arg(dir).output().await.unwrap();
-    let refs = String::from_utf8(refs.stdout).unwrap();
-    return refs
-        .split("\n")
+pub async fn ls_remote(dir: &str) -> GtrResult<HashMap<String, String>> {
+    let refs = match Command::new("git").arg("ls-remote").arg(dir).output().await {
+        Ok(refs) => String::from_utf8(refs.stdout).unwrap(),
+        Err(e) => { return Err(GitError::command_failed(Box::new(e))) }
+    };
+
+    Ok(refs.split("\n")
         .into_iter()
         .filter(|r| !String::from("\n").eq(r) && !String::from("").eq(r))
         .map(|r| {
             let s: Vec<&str> = r.split("\t").collect();
             return (String::from(s[1]), String::from(s[0]))
         })
-        .collect();
+        .collect()
+    )
 }
 
 /// Generates necessary pack files
-// TODO: move to tokio
-pub async fn upload_pack(dir: &PathBuf, want: &str, have: Option<&str>) {
-    let pack_upload = start_pack_upload_process(dir).await;
+pub async fn upload_pack(dir: &PathBuf, want: &str, have: Option<&str>) -> GtrResult<()> {
+    let pack_upload = start_pack_upload_process(dir).await?;
 
     let mut stdin = pack_upload.stdin.unwrap();
     let stdout = pack_upload.stdout.unwrap();
 
     let mut buf = BufReader::new(stdout);
-    request_pack_file(&mut buf, &mut stdin, want, have).await;
-    write_pack_file(dir, want, &mut buf).await;
+    request_pack_file(&mut buf, &mut stdin, want, have).await?;
+    write_pack_file(dir, want, &mut buf).await?;
+
+    Ok(())
 }
 
 /// Start git-upload-pack server
-async fn start_pack_upload_process(dir: &PathBuf) -> Child {
+async fn start_pack_upload_process(dir: &PathBuf) -> GtrResult<Child> {
     let git_dir = dir.join(".git");
-    let pack_upload = Command::new("git-upload-pack")
+    match Command::new("git-upload-pack")
         .arg("--strict")
         .arg(git_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to initialize git pack upload");
-
-    return pack_upload
+        .spawn() {
+            Ok(res) => Ok(res),
+            Err(e) => Err(GitError::command_failed(Box::new(e)))
+        }
 }
 
 
 /// Store pack file to fs
-async fn write_pack_file(dir: &PathBuf, want:  &str, buf: &mut BufReader<ChildStdout>) {
+async fn write_pack_file(dir: &PathBuf, want:  &str, buf: &mut BufReader<ChildStdout>) -> GtrResult<()> {
     let mut pack_content = Vec::new();
     match buf.read_to_end(&mut pack_content).await {
-        Err(e) => println!("Error reading pack file content: {:?}", e),
+        Err(e) => return Err(GitError::pack_write_failed(Box::new(e))),
         Ok(_) => {
             let file_path = dir.join(format!("{want}.pack"));
             let mut file = File::create(file_path).await.unwrap();
             file.write_all(&pack_content).await.unwrap();
         }
     };
+
+    Ok(())
 }
 
 /// Talk to git-upload-pack until it is ready to send pack files
@@ -88,7 +98,7 @@ async fn request_pack_file(
     buf: &mut BufReader<ChildStdout>,
     stdin: &mut ChildStdin,
     want: &str,
-    have: Option<&str>)
+    have: Option<&str>) -> GtrResult<()>
 {
     let mut expect_nack = false;
     loop {
@@ -97,7 +107,7 @@ async fn request_pack_file(
         // parsing should be similar to the one in lightning messages
         let mut msg_buf = [0; 65535]; // FFFF
         match buf.read(&mut msg_buf).await {
-            Err(e) => println!("Error requesting pack file: {:?}", e),
+            Err(e) => return Err(GitError::pack_read_failed(Box::new(e))),
             Ok(_) => {
                 let line = read_line(String::from_utf8(msg_buf.to_vec()).unwrap());
 
@@ -111,8 +121,7 @@ async fn request_pack_file(
                     continue;
                 }
 
-                if let Some(_) = have { ack_objects_continue(&line); } else { wait_for_nak(&line); }
-                return
+                if let Some(_) = have { ack_objects_continue(&line); } else { wait_for_nak(&line); };
             }
         };
     }
@@ -163,37 +172,47 @@ async fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
 }
 
 /// Add .gtr directory to gitignore in provided repository
-async fn ignore_gtr(dir: &str) {
-    let gitignore_path = Path::new(dir).join(".gitignore");
+async fn ignore_gtr(dir: &PathBuf) -> GtrResult<()> {
+    let gitignore_path = dir.join(".gitignore");
     match File::open(&gitignore_path).await {
         Ok(mut file) => {
             let mut data = String::new();
             file.read_to_string(&mut data).await.expect("Can not read file content");
 
             let gtr_ignored = data.split("\n").into_iter().any(|s| String::from(SETTINGS_DIR).eq(s));
-            if !gtr_ignored { store_in_gitignore(&gitignore_path).await; }
+            if !gtr_ignored {
+                store_in_gitignore(&gitignore_path).await?;
+            }
+
+            Ok(())
         },
         Err(e) => match e.kind() {
-            ErrorKind::NotFound => store_in_gitignore(&gitignore_path).await,
-            _ => panic!("Unrecognized error {e}")
+            ErrorKind::NotFound => {
+                store_in_gitignore(&gitignore_path).await?;
+                Ok(())
+            },
+            _ => return Err(GitError::ignore_failed(Box::new(e)))
         }
     }
 }
 
 /// Add gtr related files to gitignore
-async fn store_in_gitignore(gitignore_path: &PathBuf) {
+async fn store_in_gitignore(gitignore_path: &PathBuf) -> GtrResult<()>{
     match OpenOptions::new().write(true).append(true).open(gitignore_path).await {
         Ok(mut file) => file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap(),
-        Err(_) => {
-            let mut file = File::create(&gitignore_path).await.unwrap();
-            OpenOptions::new().write(true).append(true).open(gitignore_path).await.unwrap();
-            file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap();
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => {
+                let mut file = File::create(&gitignore_path).await.unwrap();
+                OpenOptions::new().write(true).append(true).open(gitignore_path).await.unwrap();
+                file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap();
+            },
+            _ => return Err(GitError::ignore_failed(Box::new(e)))
         }
     }
+
+    return Ok(())
 }
-/// Panics if provided directory is not a git repository
-fn is_git(dir: &str) {
-    if !Path::new(dir).join(".git").exists() {
-        panic!("Not a git repository");
-    }
+/// Checks if provided directory is a git repository
+fn is_git(dir: &PathBuf) -> bool {
+    dir.join(".git").exists()
 }
