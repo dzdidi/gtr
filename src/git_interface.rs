@@ -20,9 +20,14 @@ pub async fn select_exsiting_branches(dir: &str, branches: &Vec<&String>) -> Vec
 }
 
 /// Checks if directory is a git repository, adds service folder to gitignore
-pub async fn gtr_setup(dir: &str) {
-    if !is_git(dir) { panic!("Not a git repository") };
-    ignore_gtr(dir).await;
+// TODO: implement custom error object
+pub async fn gtr_setup(dir: &str) -> Result<(), String>{
+    if is_git(dir) {
+        ignore_gtr(dir).await;
+        Ok(())
+    } else {
+        Err(String::from("Not a git repository"))
+    }
 }
 
 /// Returns hash of Ref for each branch of given repository as well as current HEAD
