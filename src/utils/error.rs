@@ -72,3 +72,23 @@ impl ConfigError for GtrError {
         GtrError::new(format!("Cant create  gtr directory {:?}", e))
     }
 }
+
+pub trait TorrentError {
+    fn not_configured(dir: &PathBuf) -> Self;
+    fn start_failed(e: Box<dyn Error>) -> Self;
+    fn handshaker_failed(e: Box<dyn Error>) -> Self;
+}
+
+impl TorrentError for GtrError {
+    fn not_configured(dir: &PathBuf) -> Self {
+        GtrError::new(format!("Torrent is not configured for {}", dir.as_path().display()))
+    }
+
+    fn start_failed(e: Box<dyn Error>) -> Self {
+        GtrError::new(format!("Torrent start failed, {:?}", e))
+    }
+
+    fn handshaker_failed(e: Box<dyn Error>) -> Self {
+        GtrError::new(format!("Torrent handshaker failed, {:?}", e))
+    }
+}

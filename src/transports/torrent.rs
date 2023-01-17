@@ -13,12 +13,13 @@ use bip_util::bt::InfoHash;
 use bip_handshake::{Handshaker, HandshakerBuilder, InitiateMessage, Protocol};
 use bip_handshake::transports::TcpTransport;
 
-use crate::config::config_file;
+use crate::config::config_file::{self, Torrent};
+use crate::utils::error::{GtrResult, TorrentError};
 
-pub async fn get_dht(dir: &PathBuf) {
-    let torrent_config  = get_torrent_config(dir).await;
-    let handshaker = get_handshaker(&torrent_config).await;
-    let dht = start_dht(&torrent_config, &handshaker);
+pub async fn get_dht(dir: &PathBuf)  -> GtrResult<()> {
+    let torrent_config  = get_torrent_config(dir).await?;
+    let handshaker = get_handshaker(&torrent_config).await?;
+    let dht = start_dht(&torrent_config, &handshaker)?;
 
     // Spawn a thread to listen to and report events
     let events = dht.events();
@@ -40,6 +41,8 @@ pub async fn get_dht(dir: &PathBuf) {
             _   => ()
         }
     }
+
+    Ok(())
 }
 
 struct TorrentConfig {
@@ -48,23 +51,38 @@ struct TorrentConfig {
     pub source: SocketAddr,
 }
 
-async fn get_torrent_config(dir: &PathBuf) -> TorrentConfig {
-    let config = config_file::read_or_create(dir).await;
-    let torrent_config = match config.transport.torrent {
-        None => panic!("Torrent in not configured"),
-        Some(torrent) => torrent
-    };
-
-    return TorrentConfig {
-        bootstrap_address: SocketAddr::new(torrent_config.router.addr.parse().unwrap(), torrent_config.router.port),
-        bind_address: SocketAddr::new(torrent_config.bind.addr.parse().unwrap(), torrent_config.bind.port),
-        source: SocketAddr::new(torrent_config.bind.addr.parse().unwrap(), torrent_config.bind.port),
+impl TorrentConfig {
+    fn new(torrent_config: &Torrent) -> Self {
+        TorrentConfig {
+            bootstrap_address: SocketAddr::new(
+               torrent_config.router.addr.parse().unwrap(),
+               torrent_config.router.port
+            ),
+            bind_address: SocketAddr::new(
+                torrent_config.bind.addr.parse().unwrap(),
+                torrent_config.bind.port
+            ),
+            source: SocketAddr::new(
+                torrent_config.bind.addr.parse().unwrap(),
+                torrent_config.bind.port
+            ),
+        }
     }
 }
 
+async fn get_torrent_config(dir: &PathBuf) -> GtrResult<TorrentConfig> {
+    let config = config_file::read_or_create(dir).await?;
+    if let Some(torrent_config) = config.transport.torrent {
+        Ok(TorrentConfig::new(&torrent_config))
+    } else {
+        Err(TorrentError::not_configured(dir))
+    }
+}
+
+
 // XXX bip_dht relies on outdated version of a bip_handshaker
 //  in bit_dht Handshaker is a Trait while in bip_handshaker it is a Struct
-async fn get_handshaker(torrent_config: &TorrentConfig) -> Handshaker {
+async fn get_handshaker(torrent_config: &TorrentConfig) -> GtrResult<Handshaker> {
     // TODO: from config?
     let u_torrent_peer_id = (*b"-UT2060-000000000000").into();
 
@@ -75,7 +93,7 @@ async fn get_handshaker(torrent_config: &TorrentConfig) -> Handshaker {
     // tokio_core::reactor::Handle as a parameter to build, while current version of tokio
     // provides Handle.
     let rt = Runtime::new().unwrap();
-    let handshaker = HandshakerBuilder::new()
+    match HandshakerBuilder::new()
         .with_peer_id(u_torrent_peer_id)
         .build(TcpTransport, *rt.handle())
         .unwrap()
@@ -85,18 +103,20 @@ async fn get_handshaker(torrent_config: &TorrentConfig) -> Handshaker {
                 torrent_config.bootstrap_address,
             )
         )
-        .await
-        .unwrap();
-
-    return handshaker
+        .await {
+            Ok(handshaker) => return Ok(handshaker),
+            Err(e) => return Err(TorrentError::handshaker_failed(Box::new(e)))
+        }
 }
 
-fn start_dht(torrent_config: &TorrentConfig, handshaker: &HandshakerBuilder) -> MainlineDht {
-    DhtBuilder::with_node(torrent_config.bootstrap_address)
+fn start_dht(torrent_config: &TorrentConfig, handshaker: &HandshakerBuilder) -> GtrResult<MainlineDht> {
+    match DhtBuilder::with_node(torrent_config.bootstrap_address)
         .set_source_addr(torrent_config.source)
         .set_read_only(false)
-        .start_mainline(handshaker)
-        .unwrap()
+        .start_mainline(handshaker) {
+            Ok(dht) => return Ok(dht),
+            Err(e) => return Err(TorrentError::start_failed(Box::new(e)))
+        }
 }
 
 // TODO: implement transport trait so that different transports can get consistently injected
