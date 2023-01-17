@@ -32,11 +32,11 @@ pub trait GitError {
 }
 
 impl GitError for GtrError {
-    fn not_git_repo(dir: &PathBuf) -> GtrError {
+    fn not_git_repo(dir: &PathBuf) -> Self {
         GtrError::new(format!("{} is not a git repository", dir.as_path().display()))
     }
 
-    fn command_failed(e: Box<dyn Error>) -> GtrError {
+    fn command_failed(e: Box<dyn Error>) -> Self {
         GtrError::new(format!("Error running git command, {e:#?}"))
     }
 
