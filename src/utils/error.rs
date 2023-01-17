@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 pub type GtrResult<T> = std::result::Result<T, GtrError>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GtrError {
     message: String
 }
@@ -52,3 +52,23 @@ impl GitError for GtrError {
         GtrError::new(format!("Error reading pack file content: {:?}", e))
     }
  }
+
+pub trait ConfigError {
+    fn save_failed(e: Box<dyn Error>) -> Self;
+    fn read_failed(e: Box<dyn Error>) -> Self;
+    fn dir_creation_failed(e: Box<dyn Error>) -> Self;
+}
+
+impl ConfigError for GtrError {
+    fn save_failed(e: Box<dyn Error>) -> Self {
+        GtrError::new(format!("Cant save configuration to file {:?}", e))
+    }
+
+    fn read_failed(e: Box<dyn Error>) -> Self {
+        GtrError::new(format!("Cant read configuration from file {:?}", e))
+    }
+
+    fn dir_creation_failed(e: Box<dyn Error>) -> Self {
+        GtrError::new(format!("Cant create  gtr directory {:?}", e))
+    }
+}

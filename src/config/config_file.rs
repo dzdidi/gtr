@@ -3,6 +3,8 @@ use tokio::fs::{File, create_dir_all};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
 use toml;
 
+use crate::utils::error::{GtrResult, ConfigError};
+
 // manage content of `dir/.gtr/gtrd-export
 static CONFIG_DIR: &str = ".gtr";
 static CONFIG_FILE: &str = "config.toml";
@@ -37,37 +39,40 @@ const DEFAULT_CONFIG: Config = Config {
 };
 
 impl Config {
-    pub async fn save(&self, dir: &PathBuf) {
+    pub async fn save(&self, dir: &PathBuf) -> GtrResult<()> {
         let (_, settings_path) = get_config_path_dir_and_file(dir);
 
         match File::create(&settings_path).await {
-            Err(e) => panic!("Cant save config to file {e}"),
+            Err(e) => return Err(ConfigError::save_failed(Box::new(e))),
             Ok(mut file) => {
                 let content = toml::to_string(&self).unwrap();
                 file.write_all(content.as_bytes()).await.unwrap();
+
+                return Ok(())
             }
         }
     }
 }
-pub async fn read_or_create(dir: &PathBuf) -> Config {
+
+pub async fn read_or_create(dir: &PathBuf) -> GtrResult<Config> {
     let (config_dir, settings_path) = get_config_path_dir_and_file(dir);
     match tokio::fs::File::open(&settings_path).await {
         Ok(mut file) => {
             let mut data = String::new();
-            file.read_to_string(&mut data).await.expect("Can not read file content");
-
-            return toml::from_str(&data).unwrap_or(DEFAULT_CONFIG)
-        },
-        Err(e) => {
-            match e.kind() {
-                ErrorKind::NotFound => {
-                    create_dir_all(&config_dir).await.expect("Can not create gtr directory");
-                    DEFAULT_CONFIG.save(dir).await;
-
-                    return DEFAULT_CONFIG
-                },
-                _ => { panic!("Unrecognized error {e}") }
+            match file.read_to_string(&mut data).await {
+                Ok(_) => return Ok(toml::from_str(&data).unwrap_or(DEFAULT_CONFIG)),
+                Err(e) => return Err(ConfigError::read_failed(Box::new(e)))
             }
+        },
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => match create_dir_all(&config_dir).await {
+                Err(e) => return Err(ConfigError::dir_creation_failed(Box::new(e))),
+                Ok(_) => {
+                    DEFAULT_CONFIG.save(dir).await?;
+                    return Ok(DEFAULT_CONFIG)
+                }
+            },
+            _ => return Err(ConfigError::save_failed(Box::new(e))),
         }
     };
 }
