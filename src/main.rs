@@ -40,14 +40,14 @@ async fn main() {
         Some(("init", sub_matches)) => include(
             sub_matches.get_one("path").unwrap(),
             &vec![&String::from("master")]
-        ).await,
+        ).await.unwrap(),
         Some(("share", sub_matches)) => {
             let branches = sub_matches
                 .get_many::<String>("branches")
                 .unwrap_or_default()
                 .collect::<Vec<_>>();
 
-            include(sub_matches.get_one("path").unwrap(), &branches).await;
+            include(sub_matches.get_one("path").unwrap(), &branches).await.unwrap();
         }
         Some(("list", sub_matches)) => {
             let branches = list(sub_matches.get_one("path").unwrap()).await;
@@ -58,7 +58,7 @@ async fn main() {
                 .get_many::<String>("branches")
                 .unwrap_or_default()
                 .collect::<Vec<_>>();
-            remove(sub_matches.get_one("path").unwrap(), &branches).await;
+            remove(sub_matches.get_one("path").unwrap(), &branches).await.unwrap();
         }
         Some(("pack", sub_matches)) => {
             let want = "66ef7ea67c18d2341afb8c1521afbab31014e62f"; // refs/heads/test/want
