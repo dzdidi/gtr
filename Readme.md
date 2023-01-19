@@ -11,10 +11,12 @@ NOTE: While torrent has privacy issues with peers downloading data directly from
 The particular implementation consists of the following parts:
   - `gti` - a CLI tool;
   - `gtd` - a daemon. It creates server (one for each local repo?) which handles requests routed by dht to send necessary pack files;
-  - `git-remote-torrent` - a transport that handles communication with dht accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
-  - `git-remote-holepunch` - a transport that handles communication with holepunch accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
-  - `git-remote-ssb` - a transport that handles communication with scuttlebutt accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
-  - `git-remote-gnunet` - a transport that handles communication with gnunet accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-default` - a transport that handles communication via https/ssl accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-torrent` - a transport that handles communication via dht accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-holepunch` - a transport that handles communication via holepunch accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-ssb` - a transport that handles communication via scuttlebutt accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-gnunet` - a transport that handles communication via gnunet accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
+  - `git-remote-nostr` - a transport that handles communication via nostr accessed by git's remote commands like (`clone`, `fetch`, `pull` etc);
   - `git-interface`:
     - generates pack files (either upon request from `gtd` or upon each new commit by git)
     - lists available branches and their corresponding references
@@ -53,10 +55,12 @@ XXX: note that there is no "repository" as such. Each branch gets announced. The
 # TODO: features configurable at build
 
 Pluggable git transports with:
+- [ ] https/ssl
 - [ ] torrent
 - [ ] holepunch (hyperswarn)
 - [ ] scuttlebutt
 - [ ] GNUnet
+- [ ] nostr
 
 Pluggable application level communication
 - [ ] torrent
