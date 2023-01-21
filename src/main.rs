@@ -39,6 +39,14 @@ use gtr::gti::cli;
 #[tokio::main]
 async fn main() {
     match cli().get_matches().subcommand() {
+        // TODO: probably in a separate command like setup or so
+        // check if git installed
+        // create user gtr
+        // create jailed directory in root
+        // grant gtr necessary permission for this directory
+        //
+        // TODO: allow remote access?
+        // sshd, etc
         Some(("init", sub_matches)) => include(
             sub_matches.get_one("path").unwrap(),
             &vec![&String::from("master")]

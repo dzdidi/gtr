@@ -9,13 +9,13 @@ use regex::Regex;
 
 use crate::utils::error::{GtrResult, GitError};
 
-static SETTINGS_DIR: &str = ".gtr";
+static SETTINGS_DIR: String = String::from(".gtr");
 
 /// Checks if directory is a git repository, adds service folder to gitignore
 pub async fn gtr_setup(dir: &PathBuf) -> GtrResult<()>{
     if !is_git(dir) { return Err(GitError::not_git_repo(dir)) };
 
-    ignore_gtr(dir).await?;
+    ignore(dir, &SETTINGS_DIR).await?;
     Ok(())
 }
 
@@ -172,23 +172,23 @@ async fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
 }
 
 /// Add .gtr directory to gitignore in provided repository
-async fn ignore_gtr(dir: &PathBuf) -> GtrResult<()> {
+async fn ignore(dir: &PathBuf, to_ignore: &String) -> GtrResult<()> {
     let gitignore_path = dir.join(".gitignore");
     match File::open(&gitignore_path).await {
         Ok(mut file) => {
             let mut data = String::new();
             file.read_to_string(&mut data).await.expect("Can not read file content");
 
-            let gtr_ignored = data.split("\n").into_iter().any(|s| String::from(SETTINGS_DIR).eq(s));
+            let gtr_ignored = data.split("\n").into_iter().any(|s| to_ignore.eq(s));
             if !gtr_ignored {
-                store_in_gitignore(&gitignore_path).await?;
+                store_in_gitignore(&gitignore_path, to_ignore).await?;
             }
 
             Ok(())
         },
         Err(e) => match e.kind() {
             ErrorKind::NotFound => {
-                store_in_gitignore(&gitignore_path).await?;
+                store_in_gitignore(&gitignore_path, to_ignore).await?;
                 Ok(())
             },
             _ => return Err(GitError::ignore_failed(Box::new(e)))
@@ -197,14 +197,14 @@ async fn ignore_gtr(dir: &PathBuf) -> GtrResult<()> {
 }
 
 /// Add gtr related files to gitignore
-async fn store_in_gitignore(gitignore_path: &PathBuf) -> GtrResult<()>{
+async fn store_in_gitignore(gitignore_path: &PathBuf, to_ignore: &String) -> GtrResult<()>{
     match OpenOptions::new().write(true).append(true).open(gitignore_path).await {
-        Ok(mut file) => file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap(),
+        Ok(mut file) => file.write_all((String::from("\n") + to_ignore).as_bytes()).await.unwrap(),
         Err(e) => match e.kind() {
             ErrorKind::NotFound => {
                 let mut file = File::create(&gitignore_path).await.unwrap();
                 OpenOptions::new().write(true).append(true).open(gitignore_path).await.unwrap();
-                file.write_all((String::from("\n") + SETTINGS_DIR).as_bytes()).await.unwrap();
+                file.write_all((String::from("\n") + to_ignore).as_bytes()).await.unwrap();
             },
             _ => return Err(GitError::ignore_failed(Box::new(e)))
         }
@@ -216,3 +216,22 @@ async fn store_in_gitignore(gitignore_path: &PathBuf) -> GtrResult<()>{
 fn is_git(dir: &PathBuf) -> bool {
     dir.join(".git").exists()
 }
+
+// /// Returns name of the folder by absolute or relative path
+// // OsString?
+fn get_folder_name(dir: &PathBuf) {
+    println!("as path {:?}", dir.as_path());
+    println!("as os_string {:?}", dir.into_os_string());
+    println!("as path {:?}", dir.as_path());
+    println!("as path {:?}", dir.as_path());
+    println!("as path {:?}", dir.as_path());
+    println!("as path {:?}", dir.as_path());
+}
+// 
+// /// Clones git repo to bare repo with the same name + .git
+// /// assumes that provided path points to git repo
+// async fn clone_bare(dir: &PathBuf) -> GtrResult<String> {
+//     // TODO:
+//     // get dir name from path which can be either absolute or relative
+//     // git  clone --bare ${dir} ${dir}.git
+// }
