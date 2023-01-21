@@ -64,3 +64,12 @@ Pluggable application level communication
 - [ ] scuttlebutt
 - [ ] GNUnet
 - [ ] nostr
+
+
+# Data distribution approach
+
+The goal is to provide high level of code replication across the distributed network while maintaining high level of security for its participants. 
+Traditional git's approach with client-server architecture where server is responsible for maintaining access permissions for clients, even with shell wrappers may not be the most suitable.
+The alternative I am considering is where each participant provides "public" read-only access for the rest of the network. Updates distribution is implemented via updating local repositories of every participants at their will. Notifications/Proposals about implementations of code changes will be handled through higher level decentralized messaging protocols (nostr etc), maybe with previews of diffs, which will later forward instructions for fetching/pulling data to transport protocol (git-transport over dht etc).
+
+
