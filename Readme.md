@@ -51,23 +51,22 @@ There are two non-mutually-exclusive flows with torrent protocol:
   - `announce` - the source is hosted on the local machine while is available via torrent (e.g. key is pushed to DHT with value staying locally). This will require a server listening locally for connection requests, this will allow counterparties to lookup necessary branch/repo on DHT with consequent connection to local server for downloading;
   - `put` - the source is stored on DHT (e.g. both key and value stored in distributed manner over the network).
 
-## Commands:
+## Usage:
 
-Usage: gtr <COMMAND>
+Usage: `gtr <COMMAND>`
 
 Commands:
-  `init`    create settings file and include "master" branch for sharing
-  `share`   create settings file if not exists and share branch
-  `list`    list currently shared branches
-  `remove`  stop sharing given branch
-  `pack`    ONLY FOR TESTING generate pack files
-  `setup`   ONLY FOR TESTING setup gtr
-  `help`    Print this message or the help of the given subcommand(s)
+ -  `init`    create settings file and include "master" branch for sharing
+ -  `share`   create settings file if not exists and share branch
+ -  `list`    list currently shared branches
+ -  `remove`  stop sharing given branch
+ -  `pack`    ONLY FOR TESTING generate pack files
+ -  `setup`   ONLY FOR TESTING setup gtr
+ -  `help`    Print this message or the help of the given subcommand(s)
 
 Options:
-  `-h`, `--help`     Print help information
-  `-V`, `--version`  Print version information
-
+ -  `-h`, `--help`     Print help information
+ -  `-V`, `--version`  Print version information
 
 ### Client mode (`git-remote-(torrent/holepunch/ssb/gnunet)`)
 - `git pull` is actually doing `get` branch from DHT
