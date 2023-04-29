@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::utils::error::{GtrResult, GitError};
 
-static SETTINGS_DIR: String = String::from(".gtr");
+const SETTINGS_DIR: &str = ".gtr";
 
 /// Checks if directory is a git repository, adds service folder to gitignore
 pub async fn gtr_setup(dir: &PathBuf) -> GtrResult<()>{
@@ -172,7 +172,7 @@ async fn write_pack_line(line: &str, stdin: &mut ChildStdin) {
 }
 
 /// Add .gtr directory to gitignore in provided repository
-async fn ignore(dir: &PathBuf, to_ignore: &String) -> GtrResult<()> {
+async fn ignore(dir: &PathBuf, to_ignore: &str) -> GtrResult<()> {
     let gitignore_path = dir.join(".gitignore");
     match File::open(&gitignore_path).await {
         Ok(mut file) => {
@@ -197,7 +197,7 @@ async fn ignore(dir: &PathBuf, to_ignore: &String) -> GtrResult<()> {
 }
 
 /// Add gtr related files to gitignore
-async fn store_in_gitignore(gitignore_path: &PathBuf, to_ignore: &String) -> GtrResult<()>{
+async fn store_in_gitignore(gitignore_path: &PathBuf, to_ignore: &str) -> GtrResult<()>{
     match OpenOptions::new().write(true).append(true).open(gitignore_path).await {
         Ok(mut file) => file.write_all((String::from("\n") + to_ignore).as_bytes()).await.unwrap(),
         Err(e) => match e.kind() {
@@ -217,16 +217,6 @@ fn is_git(dir: &PathBuf) -> bool {
     dir.join(".git").exists()
 }
 
-// /// Returns name of the folder by absolute or relative path
-// // OsString?
-fn get_folder_name(dir: &PathBuf) {
-    println!("as path {:?}", dir.as_path());
-    println!("as os_string {:?}", dir.into_os_string());
-    println!("as path {:?}", dir.as_path());
-    println!("as path {:?}", dir.as_path());
-    println!("as path {:?}", dir.as_path());
-    println!("as path {:?}", dir.as_path());
-}
 // 
 // /// Clones git repo to bare repo with the same name + .git
 // /// assumes that provided path points to git repo
