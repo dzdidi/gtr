@@ -1,19 +1,71 @@
-Currently supported options by git are: https and ssl. Both of the are handled by corresponding git library.
 
-TODO: simple wrapper for client and bare server to be able to access basic push/pull operations via this code base.
+# Git Daemon [via](https://git-scm.com/book/en/v2/Git-on-the-Server-Git-Daemon)
 
-NOTE: daemon based access:
+The Git Protocol (this is what gittorrent implementation is based on). This is a special daemon that comes packaged with Git; it listens on a dedicated port (`9418`) that provides a service similar to the SSH protocol, but with absolutely no authentication. In order for a repository to be served over the Git protocol, you must create a `git-daemon-export-ok` file — the daemon won’t serve a repository without that file in it — but, other than that, there is no security. Either the Git repository is available for everyone to clone, or it isn’t. This means that there is generally no pushing over this protocol (makes sense in local-first setup). You can enable push access but, given the lack of authentication, anyone on the internet who finds your project’s URL could push to that project.
 
-Daemon based (same as in gittorrent) read-only access seems to be the most suitable to start with as it simplifies security setup.
+
+## Notes on application to P2P
 In such a setup only the owner has write access to the local copy of their repository and every user decides which version of repo to pull from external peer.
-
-The replication is achieved by users' consensus on what code is latest and most desirable.
-The issue of discoverability for the most recent code base must be resolved by users communication through higher protocol level.
-
-The downside might be that the most recent changes are the least replicated and their distribution through the network is restricted by 'spotlight'/'popularity' which might be more social rather then technical problem.
-
-Another potential issue is that such a model might create multiple "heads", the convergence of which must be done manually.
+The replication is achieved by users' consensus on what code is latest and most desirable. The issue of discoverability for the most recent code base must be resolved by users communication through higher protocol level.
+The downside might be that the most recent changes are the least replicated and their distribution through the network is restricted by 'spotlight'/'popularity' which might be more social rather then technical problem. Another potential issue is that such a model might create multiple "heads", the convergence of which must be done manually.
 This will potentially lead to increase of cases for local conflict resolutions which may result in globally different order of commits in the head.
+
+### The Pros
+The Git protocol is often the fastest network transfer protocol available. If you’re serving a lot of traffic for a public project or serving a very large project that doesn’t require user authentication for read access, it’s likely that you’ll want to set up a Git daemon to serve your project. It uses the same data-transfer mechanism as the SSH protocol but without the encryption and authentication overhead.
+
+### The Cons
+The downside of the Git protocol is the lack of authentication. It’s generally undesirable for the Git protocol to be the only access to your project. Generally, you’ll pair it with SSH or HTTPS access for the few developers who have push (write) access and have everyone else use `git://` for read-only access. It requires firewall access to port `9418`, which isn’t a standard port that corporate firewalls always allow. Behind big corporate firewalls, this obscure port is commonly blocked.
+
+## Deamon setup [via](https://git-scm.com/book/en/v2/Git-on-the-Server-Git-Daemon)
+Next we’ll set up a daemon serving repositories using the “Git” protocol. This is a common choice for fast, unauthenticated access to your Git data. Remember that since this is not an authenticated service, anything you serve over this protocol is public within its network.
+
+If you’re running this on a server outside your firewall, it should be used only for projects that are publicly visible to the world. If the server you’re running it on is inside your firewall, you might use it for projects that a large number of people or computers (continuous integration or build servers) have read-only access to, when you don’t want to have to add an SSH key for each.
+
+Basically, you need to run this command in a daemonized manner:
+
+```
+$ git daemon --reuseaddr --base-path=/srv/git/ /srv/git/
+```
+The `--reuseaddr` option allows the server to restart without waiting for old connections to time out, while the `--base-path` option allows people to clone projects without specifying the entire path, and the path at the end tells the Git daemon where to look for repositories to export. If you’re running a firewall, you’ll also need to punch a hole in it at port `9418` on the box you’re setting this up on.
+
+You can daemonize this process a number of ways, depending on the operating system you’re running.
+
+Since `systemd` is the most common initialization system among modern Linux distributions, you can use it for that purpose. Place a file in `/etc/systemd/system/git-daemon.service` with these contents:
+
+```
+[Unit]
+Description=Start Git Daemon
+
+[Service]
+ExecStart=/usr/bin/git daemon --reuseaddr --base-path=/srv/git/ /srv/git/
+
+Restart=always
+RestartSec=500ms
+
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=git-daemon
+
+User=git
+Group=git
+
+[Install]
+WantedBy=multi-user.target
+```
+
+You might have noticed that Git daemon is started here with `git` as both group and user. Modify it to fit your needs and make sure the provided user exists on the system. Also, check that the Git binary is indeed located at `/usr/bin/git` and change the path if necessary.
+
+Finally, you’ll run `systemctl enable git-daemon` to automatically start the service on boot, and can start and stop the service with, respectively, `systemctl start git-daemon` and `systemctl stop git-daemon`.
+
+On other systems, you may want to use `xinetd`, a script in your `sysvinit` system, or something else — as long as you get that command daemonized and watched somehow.
+
+Next, you have to tell Git which repositories to allow unauthenticated Git server-based access to. You can do this in each repository by creating a file named `git-daemon-export-ok`.
+
+```
+$ cd /path/to/project.git
+$ touch git-daemon-export-ok
+```
+The presence of that file tells Git that it’s OK to serve this project without authentication.
 
 # The SSH Protocol [via](https://git-scm.com/book/en/v2/Git-on-the-Server-The-Protocols)
 
