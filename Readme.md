@@ -53,9 +53,9 @@ There are two non-mutually-exclusive flows with torrent protocol:
 
 ## Usage:
 
-Usage: `gtr <COMMAND>`
+#### Usage: `gtr <COMMAND>`
 
-Commands:
+#### Commands:
  -  `init`    create settings file and include "master" branch for sharing
  -  `share`   create settings file if not exists and share branch
  -  `list`    list currently shared branches
@@ -64,7 +64,7 @@ Commands:
  -  `setup`   ONLY FOR TESTING setup gtr
  -  `help`    Print this message or the help of the given subcommand(s)
 
-Options:
+#### Options:
  -  `-h`, `--help`     Print help information
  -  `-V`, `--version`  Print version information
 
